@@ -98,28 +98,51 @@ environment and checkout live under `/tmp`. In a new terminal session,
 reactivate `/tmp/ecg-gate/venv` and re-export the environment variables before
 running commands.
 
-### 3. Point to confirmed data and checkpoint paths
+### 3. Locate and configure the data and checkpoint
 
-Set these to the locations you confirmed in the Pod file browser or terminal;
-the example values below are placeholders, not assumed mount paths:
+Do not copy example placeholder paths into the exports. Search likely mount
+locations, then use the exact paths reported by the commands or the Jupyter file
+browser:
 
 ```bash
-export MEDALCARE_ROOT=/actual/path/to/MedalCare-XL/MedalCare-XL
-export ECG_FM_CKPT=/actual/path/to/mimic_iv_ecg_physionet_pretrained.pt
-
-test -d "$MEDALCARE_ROOT/WP2_largeDataset_Noise"
-test -d "$MEDALCARE_ROOT/WP2_largeDataset_ParameterFiles"
-test -f "$ECG_FM_CKPT"
+for root in /home/jovyan /tmp /mnt /media /data /workspace; do
+  if [ -d "$root" ]; then
+    find "$root" -type d -name WP2_largeDataset_Noise -print 2>/dev/null
+    find "$root" -type f -name mimic_iv_ecg_physionet_pretrained.pt -print 2>/dev/null
+  fi
+done
 ```
 
-If any `test` command fails, correct the path before proceeding. Keep these
-exports in the same terminal session used for validation and execution.
+Set `MEDALCARE_ROOT` to the parent directory containing both dataset
+subdirectories, and set `ECG_FM_CKPT` to the exact checkpoint file path. Replace
+the quoted values below before running:
+
+```bash
+export MEDALCARE_ROOT="/replace/with/parent/of/WP2_largeDataset_Noise"
+export ECG_FM_CKPT="/replace/with/full/path/to/mimic_iv_ecg_physionet_pretrained.pt"
+
+test -d "$MEDALCARE_ROOT/WP2_largeDataset_Noise" &&
+test -d "$MEDALCARE_ROOT/WP2_largeDataset_ParameterFiles" &&
+test -f "$ECG_FM_CKPT" &&
+printf 'Dataset and checkpoint paths verified.\n'
+```
+
+If this prints no success message or returns a nonzero status, fix the paths
+before proceeding. Keep these exports in the same terminal session used for
+validation and execution.
 
 ### 4. Validate before the long run
 
+Run the preflight with `set -e` so an error stops the block and the background
+job cannot start accidentally:
+
 ```bash
+set -e
 cd ~/sts-gate
 python -c "import torch; assert torch.cuda.is_available(); print(torch.cuda.get_device_name(0))"
+test -d "$MEDALCARE_ROOT/WP2_largeDataset_Noise"
+test -d "$MEDALCARE_ROOT/WP2_largeDataset_ParameterFiles"
+test -f "$ECG_FM_CKPT"
 python src/exp0_smoke.py --device cuda
 python src/exp1_index.py
 ```
@@ -138,7 +161,8 @@ four CPU workers by default rather than trusting the host's reported CPU count;
 adjust `ECG_PROBE_N_JOBS` only after checking the Pod's actual CPU and memory
 limits.
 
-Launch it detached from the terminal and write output to persistent home:
+Only after both validation commands complete successfully, launch the run
+detached from the terminal and write output to persistent home:
 
 ```bash
 cd ~/sts-gate
