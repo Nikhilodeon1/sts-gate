@@ -156,7 +156,7 @@ def fit_probe_layer(Xtr, ytr, geom_tr):
         {"C": C.PROBE_C_GRID},
         cv=GroupKFold(n_splits=5),
         scoring="roc_auc_ovr",
-        n_jobs=-1,
+        n_jobs=C.PROBE_N_JOBS,
         refit=True,
     )
     clf.fit(sc.transform(Xtr), ytr, groups=geom_tr)

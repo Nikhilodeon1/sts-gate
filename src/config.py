@@ -7,8 +7,9 @@ import os
 
 # ── Root directories ──────────────────────────────────────────────────────────
 PROJECT_ROOT = Path(__file__).resolve().parent.parent   # sts-gate/
-CACHE_DIR    = PROJECT_ROOT / "cache"
-RUNS_DIR     = PROJECT_ROOT / "runs"
+SCRATCH_DIR  = Path(os.environ.get("ECG_SCRATCH_DIR", str(PROJECT_ROOT)))
+CACHE_DIR    = Path(os.environ.get("ECG_CACHE_DIR", str(SCRATCH_DIR / "cache")))
+RUNS_DIR     = Path(os.environ.get("ECG_RUNS_DIR", str(PROJECT_ROOT / "runs")))
 LOGS_DIR     = PROJECT_ROOT / "logs"
 CKPT_DIR     = PROJECT_ROOT / "ckpt"
 
@@ -36,7 +37,7 @@ ECG_FM_REPO      = Path(os.environ.get(
 ))
 FAIRSEQ_SIGNALS_REPO = Path(os.environ.get(
     "FAIRSEQ_SIGNALS_REPO",
-    str(PROJECT_ROOT / "vendor" / "fairseq-signals-src"),
+    str(SCRATCH_DIR / "vendor" / "fairseq-signals-src"),
 ))
 ECG_FM_CKPT      = Path(os.environ.get(
     "ECG_FM_CKPT",
@@ -100,6 +101,7 @@ EXPECTED_TOTAL_ECGS = sum(EXPECTED_FOLDER_COUNTS.values())
 # ── Test A settings ───────────────────────────────────────────────────────────
 PROBE_LAYERS  = [4, 6, 8, 10, 12]   # transformer layers to extract
 PROBE_C_GRID  = [0.01, 0.1, 1.0, 10.0]
+PROBE_N_JOBS  = max(1, int(os.environ.get("ECG_PROBE_N_JOBS", "4")))
 LOCKED_LAYER  = None   # set after Test A validation sweep; update before Test B
 
 # ── Test B – SAE settings (starting values, not yet benchmarked) ──────────────

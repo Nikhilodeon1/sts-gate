@@ -12,11 +12,15 @@ Usage:
     python src/install.py [--no-fairseq] [--python PATH]
 """
 import subprocess, sys, argparse
+import os
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 REQUIREMENTS = PROJECT_ROOT / "requirements.txt"
-FAIRSEQ_SIGNALS_DIR = PROJECT_ROOT / "vendor" / "fairseq-signals-src"
+FAIRSEQ_SIGNALS_DIR = Path(os.environ.get(
+    "FAIRSEQ_SIGNALS_REPO",
+    str(Path(os.environ.get("ECG_SCRATCH_DIR", str(PROJECT_ROOT))) / "vendor" / "fairseq-signals-src"),
+))
 
 SIMPLE_PACKAGES = [
     "wfdb",
@@ -101,11 +105,8 @@ def run_install(no_fairseq: bool = False, python: Path = Path(sys.executable)):
         raise RuntimeError(f"Required packages failed verification: {missing}")
 
     print("\nInstall complete.")
-    print("\nNext step: download the checkpoint.")
-    print("  1. Go to https://huggingface.co/wanglab/ecg-fm")
-    print("  2. Download mimic_iv_ecg_physionet_pretrained.pt")
-    print("  3. Place it in ckpt/mimic_iv_ecg_physionet_pretrained.pt")
-    print("\nThen run: python src/exp0_smoke.py")
+    print("Set MEDALCARE_ROOT and ECG_FM_CKPT to the confirmed Pod data/checkpoint paths.")
+    print("Then run: python src/exp0_smoke.py --device cuda")
 
 
 if __name__ == "__main__":
