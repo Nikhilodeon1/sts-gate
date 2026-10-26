@@ -1,0 +1,10 @@
+numpy
+pandas
+scikit-learn
+scipy
+matplotlib
+pyarrow
+wfdb
+neurokit2
+tabulate
+ecg-transform==0.1.3

@@ -1,0 +1,42 @@
+# .gitignore – ECG Gate project
+
+# Large data files
+cache/
+data/
+vendor/
+ckpt/
+*.npy
+*.pt
+*.parquet
+*.pkl
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+
+# Keep runs/ structure but not large arrays
+runs/*.npy
+runs/*.pt
+
+# Keep small JSON results
+!runs/*.json
+!runs/*.csv
+!runs/*.png
+!runs/*.md
