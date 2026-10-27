@@ -4,192 +4,44 @@ Experiments for evaluating ECG-FM representations on the MedalCare-XL dataset.
 Dataset files, model checkpoints, cached embeddings, and the fairseq-signals
 checkout are not stored in Git.
 
-## Pod setup (JupyterHub GPU container)
+## Pod workflow
 
-The Pod home directory is persistent but small. Keep the Git clone and logs
-there; put the Python environment, fairseq-signals checkout, and caches under
-`/tmp`. `/tmp` is wiped on a Pod restart, so rerun setup and rebuild caches
-after a restart. Do not assume `/workspace` exists or that the hardware/storage
-matches prior Pods.
+Use the three scripts under `scripts/` in order:
 
-### 1. Clone and check the Pod
-
-```bash
-cd ~
-git clone <your-repository-url> sts-gate
-cd ~/sts-gate
-
-df -h ~ /tmp
-cat /sys/fs/cgroup/memory.max
-nvidia-smi --query-gpu=name,memory.total --format=csv
-ls /workspace 2>&1 | head -3
-command -v python3.10 || true
-python3 -c "import torch; print(torch.__version__, torch.cuda.is_available()); print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CUDA unavailable')"
-```
-
-Confirm the actual mounted MedalCare-XL root and checkpoint path before
-continuing. The MedalCare root must contain both
-`WP2_largeDataset_Noise/` and `WP2_largeDataset_ParameterFiles/`. The checkpoint
-must be the pretrained `mimic_iv_ecg_physionet_pretrained.pt` file. Do not
-download another copy if the assets are already mounted.
-
-### 2. Create a temporary environment and install dependencies
-
-First use the Pod's Python/Torch if its CUDA check above succeeds. Avoid
-reinstalling Torch in that case: the CUDA wheel is large and has caused Jupyter
-servers to drop during installation on some Pods.
-
-If a temporary venv is needed, use the available `uv` workflow and expose the
-Pod's existing packages. When the current Python already has usable CUDA
-PyTorch, create a venv from that same interpreter so it can reuse the existing
-packages:
+1. `pod_setup.sh` checks Pod resources, reuses CUDA PyTorch from the active Pod
+   Python when possible, creates the environment under `/tmp`, installs
+   dependencies, and prompts for mounted dataset/checkpoint paths. Only valid
+   paths are saved in the private file `~/.ecg-gate.env`.
+2. `pod_status.sh` reports environment/assets, index and report timestamps,
+   prior run PID/exit status, any Test A result metrics, and the end of the run
+   log. It does not start or stop jobs.
+3. `pod_run.sh` validates configuration, runs Exp 0 and Exp 1, checks both
+   PASS verdicts, then launches Test A sensitivity excluding `run_S64` and
+   `run_S67`. It refuses to overwrite an existing sensitivity result.
 
 ```bash
-export PIP_NO_CACHE_DIR=1
-mkdir -p /tmp/ecg-gate
-python -m venv --system-site-packages /tmp/ecg-gate/venv
-source /tmp/ecg-gate/venv/bin/activate
-
-python -c "import torch; print(torch.__version__, torch.cuda.is_available()); print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CUDA unavailable')"
+bash scripts/pod_setup.sh
+bash scripts/pod_status.sh
+bash scripts/pod_run.sh
 ```
 
-If the base Python does not have working CUDA PyTorch, use `uv` to install
-Python 3.12 and make a venv under `/tmp` instead. Keep uv's Python downloads
-out of home:
+By default, the run script detaches the workflow and logs to
+`~/ecg-gate-logs/test-a-sensitivity.log`. Use
+`bash scripts/pod_run.sh --foreground` to keep it attached to the terminal.
+Check progress and previous results with `bash scripts/pod_status.sh`.
 
-```bash
-export UV_NO_CACHE=1
-export UV_PYTHON_INSTALL_DIR=/tmp/ecg-gate/python
-mkdir -p /tmp/ecg-gate
-command -v uv >/dev/null || python3 -m pip install --user uv
-export PATH="$HOME/.local/bin:$PATH"
-uv python install 3.12
-uv venv --python 3.12 /tmp/ecg-gate/venv
-source /tmp/ecg-gate/venv/bin/activate
-```
+## Pod storage and restart behavior
 
-Recheck `torch.cuda.is_available()` in this venv. Only if no usable CUDA Torch
-is present in the Pod or venv, install the Pod-tested build (this can use
-several GB and may disrupt the Jupyter server):
+The JupyterHub home directory is persistent but small: keep the clone, saved
+path config, and logs there. The Python environment, fairseq-signals checkout,
+and embedding/index caches go under `/tmp/ecg-gate`, which is wiped on a Pod
+restart. After restart, run setup and status again; caches may need rebuilding.
+The scripts do not assume `/workspace` or a particular data mount. Setup prompts
+for the real MedalCare root and checkpoint path; leave a prompt empty if the
+asset is not mounted yet. Test A will refuse to start until both are valid.
 
-```bash
-python -m pip install torch==2.14.1 --index-url https://download.pytorch.org/whl/cu126
-```
-
-Set scratch paths and install the remaining project packages. Setup output is
-tee'd to the persistent home directory so it survives a server restart:
-
-```bash
-cd ~/sts-gate
-export ECG_SCRATCH_DIR=/tmp/ecg-gate
-export ECG_CACHE_DIR=/tmp/ecg-gate/cache
-export FAIRSEQ_SIGNALS_REPO=/tmp/ecg-gate/vendor/fairseq-signals-src
-export ECG_PROBE_N_JOBS=4
-export UV_NO_CACHE=1
-export PIP_NO_CACHE_DIR=1
-
-set -o pipefail
-python src/install.py 2>&1 | tee ~/ecg-gate-setup.log
-```
-
-The installer installs the packages in `requirements.txt` and the ECG-FM
-fairseq-signals fork. Run the same setup again after a Pod restart because the
-environment and checkout live under `/tmp`. In a new terminal session,
-reactivate `/tmp/ecg-gate/venv` and re-export the environment variables before
-running commands.
-
-### 3. Locate and configure the data and checkpoint
-
-Do not copy example placeholder paths into the exports. Search likely mount
-locations, then use the exact paths reported by the commands or the Jupyter file
-browser:
-
-```bash
-for root in /home/jovyan /tmp /mnt /media /data /workspace; do
-  if [ -d "$root" ]; then
-    find "$root" -type d -name WP2_largeDataset_Noise -print 2>/dev/null
-    find "$root" -type f -name mimic_iv_ecg_physionet_pretrained.pt -print 2>/dev/null
-  fi
-done
-```
-
-Set `MEDALCARE_ROOT` to the parent directory containing both dataset
-subdirectories, and set `ECG_FM_CKPT` to the exact checkpoint file path. Replace
-the quoted values below before running:
-
-```bash
-export MEDALCARE_ROOT="/replace/with/parent/of/WP2_largeDataset_Noise"
-export ECG_FM_CKPT="/replace/with/full/path/to/mimic_iv_ecg_physionet_pretrained.pt"
-
-test -d "$MEDALCARE_ROOT/WP2_largeDataset_Noise" &&
-test -d "$MEDALCARE_ROOT/WP2_largeDataset_ParameterFiles" &&
-test -f "$ECG_FM_CKPT" &&
-printf 'Dataset and checkpoint paths verified.\n'
-```
-
-If this prints no success message or returns a nonzero status, fix the paths
-before proceeding. Keep these exports in the same terminal session used for
-validation and execution.
-
-### 4. Validate before the long run
-
-Run the preflight with `set -e` so an error stops the block and the background
-job cannot start accidentally:
-
-```bash
-set -e
-cd ~/sts-gate
-python -c "import torch; assert torch.cuda.is_available(); print(torch.cuda.get_device_name(0))"
-test -d "$MEDALCARE_ROOT/WP2_largeDataset_Noise"
-test -d "$MEDALCARE_ROOT/WP2_largeDataset_ParameterFiles"
-test -f "$ECG_FM_CKPT"
-python src/exp0_smoke.py --device cuda
-python src/exp1_index.py
-```
-
-Exp 1 should report 16,842 indexed records out of 16,900 expected (99.7%
-overall). The 56 IAB and 2 RBBB records missing from the current source data
-have null `siginfo` entries.
-
-### 5. Launch Test A sensitivity analysis
-
-Run the eight-group Test A sensitivity analysis excluding the two `run_id`s that
-span the provided splits. The predefined split assignments are not modified.
-The run excludes 2,777 indexed ECGs, retains all eight groups in every split,
-and groups cross-validation by `group::source_shape_id`. Cross-validation uses
-four CPU workers by default rather than trusting the host's reported CPU count;
-adjust `ECG_PROBE_N_JOBS` only after checking the Pod's actual CPU and memory
-limits.
-
-Only after both validation commands complete successfully, launch the run
-detached from the terminal and write output to persistent home:
-
-```bash
-cd ~/sts-gate
-mkdir -p ~/ecg-gate-logs
-nohup env OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 \
-  python -u src/probe.py \
-    --device cuda \
-    --ctrl-seeds 3 \
-    --exclude-run-ids run_S64 run_S67 \
-  > ~/ecg-gate-logs/test-a-sensitivity.log 2>&1 < /dev/null &
-echo $! > ~/ecg-gate-logs/test-a-sensitivity.pid
-```
-
-Monitor the run:
-
-```bash
-tail -f ~/ecg-gate-logs/test-a-sensitivity.log
-ps -p "$(cat ~/ecg-gate-logs/test-a-sensitivity.pid)" -o pid,etime,stat,cmd
-nvidia-smi
-```
-
-`nvidia-smi` may say no processes are found even while the job is running; use
-GPU utilization, memory, and power alongside the log and process status.
-
-On successful completion, results are saved under
-`runs/A_results_sensitivity_without_S64_S67.json`; layer plots are saved under
-`runs/`, and completed embedding caches under
-`/tmp/ecg-gate/cache/embeddings/`. The pretrained and each control embedding
-cache are saved when that embedding pass finishes. `/tmp` caches do not survive
-a Pod restart, so a restarted run must rebuild them. The log remains in home.
+Exp 1 is expected to index 16,842 of 16,900 records from the current source
+dataset. The 56 IAB and 2 RBBB records with null `siginfo` are absent from that
+source. Test A keeps the predefined splits unchanged, groups cross-validation
+by `group::source_shape_id`, and writes sensitivity outputs separately from
+primary-run results.
