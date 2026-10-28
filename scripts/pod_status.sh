@@ -27,6 +27,8 @@ VENV_DIR="${ECG_VENV_DIR:-${SCRATCH_DIR}/venv}"
 PYTHON="${VENV_DIR}/bin/python"
 MEDALCARE_ROOT="${MEDALCARE_ROOT:-}"
 ECG_FM_CKPT="${ECG_FM_CKPT:-}"
+ECG_BUNDLE_ROOT="${ECG_BUNDLE_ROOT:-}"
+ECG_BUNDLE_ARCHIVE="${ECG_BUNDLE_ARCHIVE:-}"
 
 section "ECG Gate status"
 printf 'Time: %s\n' "$(date '+%Y-%m-%d %H:%M:%S %Z')"
@@ -55,16 +57,73 @@ printf 'Config file: %s\n' "$ENV_FILE"
 printf 'Scratch: %s\n' "$SCRATCH_DIR"
 printf 'Venv: %s\n' "$VENV_DIR"
 printf 'MEDALCARE_ROOT: %s\n' "${MEDALCARE_ROOT:-<unset>}"
+printf 'ECG_BUNDLE_ROOT: %s\n' "${ECG_BUNDLE_ROOT:-<unset>}"
+printf 'ECG_BUNDLE_ARCHIVE: %s\n' "${ECG_BUNDLE_ARCHIVE:-<unset>}"
 printf 'ECG_FM_CKPT: %s\n' "${ECG_FM_CKPT:-<unset>}"
+raw_noise_ready=0
+raw_params_ready=0
+bundle_dataset_ready=0
 if [[ -n "$MEDALCARE_ROOT" && -d "$MEDALCARE_ROOT/WP2_largeDataset_Noise" ]]; then
-    ok "MedalCare noise directory exists."
+    ok "Raw MedalCare noise directory exists."
+    raw_noise_ready=1
 else
-    bad "MedalCare noise directory is not configured/found."
+    warn "Raw MedalCare noise directory is not configured/found."
 fi
 if [[ -n "$MEDALCARE_ROOT" && -d "$MEDALCARE_ROOT/WP2_largeDataset_ParameterFiles" ]]; then
-    ok "MedalCare parameter directory exists."
+    ok "Raw MedalCare parameter directory exists."
+    raw_params_ready=1
 else
-    bad "MedalCare parameter directory is not configured/found."
+    warn "Raw MedalCare parameter directory is not configured/found."
+fi
+if [[ -n "$ECG_BUNDLE_ARCHIVE" && -f "$ECG_BUNDLE_ARCHIVE" ]]; then
+    stat -c 'Bundle archive: %n | size=%s bytes | modified=%y' "$ECG_BUNDLE_ARCHIVE" 2>/dev/null ||
+        ls -lh "$ECG_BUNDLE_ARCHIVE"
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$ECG_BUNDLE_ARCHIVE"
+    fi
+elif [[ -n "$ECG_BUNDLE_ARCHIVE" ]]; then
+    warn "Saved bundle archive path does not exist: $ECG_BUNDLE_ARCHIVE"
+fi
+if [[ -n "$ECG_BUNDLE_ROOT" &&
+      -f "$ECG_BUNDLE_ROOT/bundle.json" &&
+      -f "$ECG_BUNDLE_ROOT/manifest.parquet" ]]; then
+    ok "Extracted ECG bundle metadata and manifest exist."
+    if [[ -x "$PYTHON" ]]; then
+        "$PYTHON" - "$ECG_BUNDLE_ROOT/bundle.json" <<'PY'
+import json, sys
+with open(sys.argv[1], encoding="utf-8") as f:
+    data = json.load(f)
+print("Bundle records:", data.get("record_count"))
+print("Bundle quantization:", data.get("waveform", {}).get("quantization"))
+print("Bundle estimated source-preprocess RMSE:", data.get("quantization_stats", {}).get("rmse"))
+PY
+        if [[ $? -eq 0 ]]; then
+            (
+                cd "$PROJECT_ROOT"
+                ECG_BUNDLE_ROOT="$ECG_BUNDLE_ROOT" \
+                    "$PYTHON" - <<'PY'
+import sys
+sys.path.insert(0, "src")
+from data import build_index
+index = build_index()
+print("Resolved bundle index rows:", len(index))
+print("Resolved bundle groups:", sorted(index["group"].unique()))
+PY
+            )
+            [[ "$?" -eq 0 ]] || bad "Bundle shards/index validation failed."
+        else
+            bad "Bundle metadata JSON is invalid."
+        fi
+    fi
+    bundle_dataset_ready=1
+elif [[ -n "$ECG_BUNDLE_ROOT" ]]; then
+    warn "Configured extracted bundle is missing bundle.json or manifest.parquet."
+fi
+if { [[ "$raw_noise_ready" -eq 1 && "$raw_params_ready" -eq 1 ]]; } ||
+   [[ "$bundle_dataset_ready" -eq 1 ]]; then
+    ok "At least one complete dataset source is configured."
+else
+    bad "Neither a complete raw dataset nor a compact ECG bundle is available."
 fi
 if [[ -n "$ECG_FM_CKPT" && -f "$ECG_FM_CKPT" ]]; then
     ok "ECG-FM checkpoint exists."

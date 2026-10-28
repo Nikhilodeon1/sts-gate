@@ -54,10 +54,26 @@ def make_windows(x: np.ndarray) -> np.ndarray:
 
 def load_medalcare(csv_path: str | Path) -> np.ndarray:
     """
-    Load one MedalCare-XL CSV file.
+    Load one source CSV or a compact ECG bundle record.
     CSV has no header; rows are leads in LEADS order; 5000 columns (samples).
     Returns (2, 12, 2500) float32.
     """
+    path_text = str(csv_path)
+    if "::" in path_text:
+        shard_path, _, array_key = path_text.partition("::")
+        if not array_key:
+            raise ValueError(f"Missing array key in bundled ECG path: {path_text}")
+        with np.load(shard_path, allow_pickle=False) as shard:
+            quantized = shard[array_key]
+            scale = shard[f"{array_key}_scale"]
+        if quantized.shape != (12, 5000) or scale.shape != (12,):
+            raise ValueError(
+                f"Unexpected bundled ECG shape/scales in {path_text}: "
+                f"{quantized.shape} / {scale.shape}"
+            )
+        normalized = quantized.astype(np.float32) * scale.astype(np.float32)[:, None]
+        return make_windows(normalized)
+
     raw = np.loadtxt(str(csv_path), delimiter=",")   # (12, 5000)
     if raw.shape != (12, 5000):
         raise ValueError(f"Unexpected MedalCare shape {raw.shape} in {csv_path}")
@@ -300,6 +316,52 @@ def build_index(force: bool = False) -> pd.DataFrame:
     Build index.parquet: one row per MedalCare filtered ECG with all parameters.
     Cached; pass force=True to rebuild.
     """
+    if C.ECG_BUNDLE_ROOT is not None:
+        bundle_root = C.ECG_BUNDLE_ROOT.resolve()
+        metadata_path = bundle_root / "bundle.json"
+        manifest_path = bundle_root / "manifest.parquet"
+        if not metadata_path.is_file() or not manifest_path.is_file():
+            raise FileNotFoundError(
+                f"ECG bundle must contain bundle.json and manifest.parquet: {bundle_root}"
+            )
+        import json
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        if metadata.get("format_version") != 1:
+            raise ValueError(
+                f"Unsupported ECG bundle format version: {metadata.get('format_version')!r}"
+            )
+        df = pd.read_parquet(manifest_path)
+        if len(df) != metadata.get("record_count"):
+            raise ValueError(
+                f"Bundle manifest has {len(df)} rows; metadata declares "
+                f"{metadata.get('record_count')}"
+            )
+        if "ecg_path" not in df or df["model_id"].isna().any():
+            raise ValueError("Bundle manifest is missing ECG paths or model IDs.")
+
+        resolved_paths = []
+        missing_shards = set()
+        for ref in df["ecg_path"].astype(str):
+            relative_path, separator, array_key = ref.partition("::")
+            if not separator or not array_key:
+                raise ValueError(f"Invalid bundled ECG reference: {ref!r}")
+            shard_path = (bundle_root / relative_path).resolve()
+            if bundle_root not in shard_path.parents:
+                raise ValueError(f"ECG bundle reference escapes bundle root: {ref!r}")
+            if not shard_path.is_file():
+                missing_shards.add(str(shard_path))
+            resolved_paths.append(f"{shard_path}::{array_key}")
+        if missing_shards:
+            raise FileNotFoundError(
+                f"ECG bundle is missing {len(missing_shards)} shard file(s): "
+                + ", ".join(sorted(missing_shards)[:5])
+            )
+        df["ecg_path"] = resolved_paths
+        C.CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        df.to_parquet(C.INDEX_PARQUET, index=False)
+        print(f"Loaded {len(df)} ECG records from compact bundle {bundle_root}")
+        return df
+
     if C.INDEX_PARQUET.exists() and not force:
         cached = pd.read_parquet(C.INDEX_PARQUET)
         required_columns = {"model_id", "source_shape_id"}

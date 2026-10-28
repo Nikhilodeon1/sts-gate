@@ -22,6 +22,7 @@ SCRATCH_DIR="${ECG_SCRATCH_DIR:-/tmp/ecg-gate}"
 VENV_DIR="${ECG_VENV_DIR:-${SCRATCH_DIR}/venv}"
 MEDALCARE_ROOT="${MEDALCARE_ROOT:-}"
 ECG_FM_CKPT="${ECG_FM_CKPT:-}"
+ECG_BUNDLE_ROOT="${ECG_BUNDLE_ROOT:-}"
 
 if [[ "$MODE" != "--worker" ]]; then
     if [[ "$MODE" != "" && "$MODE" != "--foreground" ]]; then
@@ -49,10 +50,21 @@ if [[ "$MODE" != "--worker" ]]; then
             printf '[ERROR] Venv Python not found: %s/bin/python. Run scripts/pod_setup.sh first.\n' "$VENV_DIR"
             exit 2
         fi
-        if [[ -z "$MEDALCARE_ROOT" ||
-              ! -d "$MEDALCARE_ROOT/WP2_largeDataset_Noise" ||
-              ! -d "$MEDALCARE_ROOT/WP2_largeDataset_ParameterFiles" ]]; then
-            printf '[ERROR] MedalCare paths are unset or invalid. Configure them with scripts/pod_setup.sh first.\n'
+        raw_dataset_ready=0
+        bundle_dataset_ready=0
+        if [[ -n "$MEDALCARE_ROOT" &&
+              -d "$MEDALCARE_ROOT/WP2_largeDataset_Noise" &&
+              -d "$MEDALCARE_ROOT/WP2_largeDataset_ParameterFiles" ]]; then
+            raw_dataset_ready=1
+        fi
+        if [[ -n "$ECG_BUNDLE_ROOT" &&
+              -f "$ECG_BUNDLE_ROOT/bundle.json" &&
+              -f "$ECG_BUNDLE_ROOT/manifest.parquet" ]]; then
+            bundle_dataset_ready=1
+        fi
+        if [[ "$raw_dataset_ready" -ne 1 && "$bundle_dataset_ready" -ne 1 ]]; then
+            printf '[ERROR] Neither raw MedalCare data nor a valid compact bundle is configured.\n'
+            printf 'Configure the data with scripts/pod_setup.sh first.\n'
             exit 2
         fi
         if [[ -z "$ECG_FM_CKPT" || ! -f "$ECG_FM_CKPT" ]]; then
@@ -129,11 +141,15 @@ VENV_DIR="${ECG_VENV_DIR:-${SCRATCH_DIR}/venv}"
 PYTHON="${VENV_DIR}/bin/python"
 MEDALCARE_ROOT="${MEDALCARE_ROOT:-}"
 ECG_FM_CKPT="${ECG_FM_CKPT:-}"
+ECG_BUNDLE_ROOT="${ECG_BUNDLE_ROOT:-}"
 export ECG_SCRATCH_DIR="$SCRATCH_DIR"
 export ECG_CACHE_DIR="${ECG_CACHE_DIR:-${SCRATCH_DIR}/cache}"
 export FAIRSEQ_SIGNALS_REPO="${FAIRSEQ_SIGNALS_REPO:-${SCRATCH_DIR}/vendor/fairseq-signals-src}"
 export ECG_PROBE_N_JOBS="${ECG_PROBE_N_JOBS:-4}"
 export MEDALCARE_ROOT ECG_FM_CKPT
+if [[ -n "$ECG_BUNDLE_ROOT" ]]; then
+    export ECG_BUNDLE_ROOT
+fi
 export OMP_NUM_THREADS="${OMP_NUM_THREADS:-1}"
 export MKL_NUM_THREADS="${MKL_NUM_THREADS:-1}"
 
@@ -169,10 +185,21 @@ if [[ ! -x "$PYTHON" ]]; then
     printf '[ERROR] Venv Python not found: %s. /tmp may have been cleared; run scripts/pod_setup.sh.\n' "$PYTHON"
     exit 2
 fi
-if [[ -z "$MEDALCARE_ROOT" || ! -d "$MEDALCARE_ROOT/WP2_largeDataset_Noise" ||
-      ! -d "$MEDALCARE_ROOT/WP2_largeDataset_ParameterFiles" ]]; then
-    printf '[ERROR] MedalCare dataset paths are unset or invalid: %s\n' "${MEDALCARE_ROOT:-<unset>}"
-    printf 'Run scripts/pod_setup.sh and configure the real dataset path. Test A was not started.\n'
+raw_dataset_ready=0
+bundle_dataset_ready=0
+if [[ -n "$MEDALCARE_ROOT" &&
+      -d "$MEDALCARE_ROOT/WP2_largeDataset_Noise" &&
+      -d "$MEDALCARE_ROOT/WP2_largeDataset_ParameterFiles" ]]; then
+    raw_dataset_ready=1
+fi
+if [[ -n "$ECG_BUNDLE_ROOT" &&
+      -f "$ECG_BUNDLE_ROOT/bundle.json" &&
+      -f "$ECG_BUNDLE_ROOT/manifest.parquet" ]]; then
+    bundle_dataset_ready=1
+fi
+if [[ "$raw_dataset_ready" -ne 1 && "$bundle_dataset_ready" -ne 1 ]]; then
+    printf '[ERROR] Neither raw MedalCare data nor a valid compact bundle is configured.\n'
+    printf 'Run scripts/pod_setup.sh and configure a dataset source. Test A was not started.\n'
     exit 2
 fi
 if [[ -z "$ECG_FM_CKPT" || ! -f "$ECG_FM_CKPT" ]]; then

@@ -44,9 +44,83 @@ prompt_asset_path() {
     printf -v "$variable" '%s' "$candidate"
 }
 
+extract_dataset_bundle() {
+    local archive_path="$1"
+    local bundle_root="${SCRATCH_DIR}/medalcare_bundle"
+    local staging_dir
+    local archive_sha=""
+
+    if [[ ! -f "$archive_path" ]]; then
+        log "[WARN] Bundle archive does not exist; ignoring it: $archive_path"
+        ECG_BUNDLE_ROOT=""
+        return
+    fi
+    if command -v sha256sum >/dev/null 2>&1; then
+        archive_sha="$(sha256sum "$archive_path" | awk '{print $1}')"
+    fi
+    if [[ -f "$bundle_root/bundle.json" && -f "$bundle_root/manifest.parquet" ]]; then
+        if [[ -n "$archive_sha" && -f "$bundle_root/archive.sha256" ]] &&
+           [[ "$(cat "$bundle_root/archive.sha256")" == "$archive_sha" ]]; then
+            log "Using already-extracted dataset bundle at $bundle_root"
+            ECG_BUNDLE_ROOT="$bundle_root"
+        elif [[ -n "$archive_sha" ]]; then
+            printf '[ERROR] Extracted bundle differs from the uploaded archive or has no checksum marker.\n'
+            printf 'Inspect only %s; if replacing it intentionally, remove that temporary bundle directory and rerun setup.\n' "$bundle_root"
+            exit 2
+        else
+            log "[WARN] sha256sum unavailable; using existing extracted bundle at $bundle_root."
+            ECG_BUNDLE_ROOT="$bundle_root"
+        fi
+        return
+    fi
+    if [[ -e "$bundle_root" ]]; then
+        printf '[ERROR] Incomplete bundle destination exists: %s\n' "$bundle_root"
+        printf 'Inspect that specific temporary directory and remove it manually before retrying setup.\n'
+        exit 2
+    fi
+
+    staging_dir="$(mktemp -d "${SCRATCH_DIR}/medalcare_bundle.XXXXXX")"
+    log "Extracting compact dataset bundle to temporary scratch: $staging_dir"
+    if ! "$PYTHON" - "$archive_path" "$staging_dir" <<'PY'
+import pathlib
+import sys
+import zipfile
+
+archive_path = pathlib.Path(sys.argv[1])
+destination = pathlib.Path(sys.argv[2]).resolve()
+with zipfile.ZipFile(archive_path) as bundle:
+    for member in bundle.infolist():
+        target = (destination / member.filename).resolve()
+        if target != destination and destination not in target.parents:
+            raise ValueError(f"Unsafe bundle path: {member.filename!r}")
+    bundle.extractall(destination)
+required = (destination / "bundle.json", destination / "manifest.parquet")
+if not all(path.is_file() for path in required):
+    raise ValueError("Bundle archive must contain bundle.json and manifest.parquet.")
+with archive_path.open("rb") as stream:
+    import hashlib
+    digest = hashlib.sha256()
+    for chunk in iter(lambda: stream.read(8 * 1024 * 1024), b""):
+        digest.update(chunk)
+(destination / "archive.sha256").write_text(digest.hexdigest() + "\n", encoding="ascii")
+PY
+    then
+        printf '[ERROR] Bundle extraction/validation failed. Partial staging kept at %s for inspection.\n' "$staging_dir"
+        exit 2
+    fi
+    mv "$staging_dir" "$bundle_root"
+    ECG_BUNDLE_ROOT="$bundle_root"
+    log "Compact dataset bundle extracted and validated."
+    if [[ -n "$archive_sha" ]]; then
+        log "Bundle archive SHA-256: $archive_sha"
+    fi
+}
+
 save_asset_config() {
     local medalcare_root="${MEDALCARE_ROOT:-}"
     local checkpoint="${ECG_FM_CKPT:-}"
+    local bundle_archive="${ECG_BUNDLE_ARCHIVE:-}"
+    local bundle_root="${ECG_BUNDLE_ROOT:-}"
     local temp_file
 
     if [[ -n "$medalcare_root" ]] &&
@@ -59,6 +133,11 @@ save_asset_config() {
         log "[WARN] Checkpoint file is not valid; it will not be saved: $checkpoint"
         checkpoint=""
     fi
+    if [[ -n "$bundle_archive" && (! -f "$bundle_archive" || ! -f "$bundle_root/manifest.parquet") ]]; then
+        log "[WARN] Bundle archive or extracted bundle is invalid; bundle paths will not be saved."
+        bundle_archive=""
+        bundle_root=""
+    fi
 
     temp_file="$(mktemp "${HOME}/.ecg-gate.env.XXXXXX")"
     {
@@ -68,6 +147,10 @@ save_asset_config() {
         printf 'export FAIRSEQ_SIGNALS_REPO=%q\n' \
             "${FAIRSEQ_SIGNALS_REPO:-${SCRATCH_DIR}/vendor/fairseq-signals-src}"
         printf 'export ECG_PROBE_N_JOBS=%q\n' "${ECG_PROBE_N_JOBS:-4}"
+        if [[ -n "$bundle_archive" ]]; then
+            printf 'export ECG_BUNDLE_ARCHIVE=%q\n' "$bundle_archive"
+            printf 'export ECG_BUNDLE_ROOT=%q\n' "$bundle_root"
+        fi
         if [[ -n "$medalcare_root" ]]; then
             printf 'export MEDALCARE_ROOT=%q\n' "$medalcare_root"
         fi
@@ -172,10 +255,15 @@ log "Using Python: $("$PYTHON" --version 2>&1)"
 export MEDALCARE_ROOT="${MEDALCARE_ROOT:-}"
 export ECG_FM_CKPT="${ECG_FM_CKPT:-}"
 if [[ -t 0 ]]; then
+    prompt_asset_path ECG_BUNDLE_ARCHIVE \
+        "Path to uploaded compact ECG bundle ZIP (blank if using mounted raw dataset)"
     prompt_asset_path MEDALCARE_ROOT \
         "MedalCare root (parent of WP2_largeDataset_Noise; blank if not mounted yet)"
     prompt_asset_path ECG_FM_CKPT \
         "Full ECG-FM checkpoint path (blank if not mounted yet)"
+fi
+if [[ -n "${ECG_BUNDLE_ARCHIVE:-}" ]]; then
+    extract_dataset_bundle "$ECG_BUNDLE_ARCHIVE"
 fi
 save_asset_config
 
@@ -193,9 +281,19 @@ print("numpy/pandas/sklearn/scipy/matplotlib/pyarrow imports: OK")
 assert torch.cuda.is_available(), "CUDA became unavailable after setup"
 '
 
+bundle_ready=0
+if [[ -n "${ECG_BUNDLE_ROOT:-}" &&
+      -f "$ECG_BUNDLE_ROOT/bundle.json" &&
+      -f "$ECG_BUNDLE_ROOT/manifest.parquet" ]]; then
+    bundle_ready=1
+fi
+raw_ready=0
 if [[ -d "${MEDALCARE_ROOT:-}/WP2_largeDataset_Noise" &&
-      -d "${MEDALCARE_ROOT:-}/WP2_largeDataset_ParameterFiles" &&
-      -f "${ECG_FM_CKPT:-}" ]]; then
+      -d "${MEDALCARE_ROOT:-}/WP2_largeDataset_ParameterFiles" ]]; then
+    raw_ready=1
+fi
+if { [[ "$bundle_ready" -eq 1 ]] || [[ "$raw_ready" -eq 1 ]]; } &&
+   [[ -f "${ECG_FM_CKPT:-}" ]]; then
     log "Dataset and checkpoint paths are configured and valid."
 else
     log "[WARN] Python environment is ready, but MedalCare data and/or checkpoint paths are not configured."

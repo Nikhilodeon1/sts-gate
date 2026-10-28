@@ -20,6 +20,10 @@ MEDALCARE_ROOT   = Path(os.environ.get(
     "MEDALCARE_ROOT",
     str(DATASETS_ROOT / "MedalCare-XL" / "MedalCare-XL"),
 ))
+ECG_BUNDLE_ROOT = (
+    Path(os.environ["ECG_BUNDLE_ROOT"])
+    if os.environ.get("ECG_BUNDLE_ROOT") else None
+)
 MEDALCARE_NOISE  = MEDALCARE_ROOT / "WP2_largeDataset_Noise"
 MEDALCARE_PARAMS = MEDALCARE_ROOT / "WP2_largeDataset_ParameterFiles"
 
