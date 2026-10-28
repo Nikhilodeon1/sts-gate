@@ -16,6 +16,7 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 from sklearn.linear_model import LogisticRegression
+from sklearn.multiclass import OneVsRestClassifier
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import GroupKFold, GridSearchCV
 from sklearn.metrics import roc_auc_score, accuracy_score, confusion_matrix
@@ -152,8 +153,9 @@ def fit_probe_layer(Xtr, ytr, geom_tr):
     """Fit logistic regression with geometry-grouped CV. Returns fitted clf and scaler."""
     sc  = StandardScaler().fit(Xtr)
     clf = GridSearchCV(
-        LogisticRegression(max_iter=2000, multi_class="ovr"),
-        {"C": C.PROBE_C_GRID},
+        # OneVsRestClassifier == the old multi_class="ovr" (removed in scikit-learn 1.8)
+        OneVsRestClassifier(LogisticRegression(max_iter=2000)),
+        {"estimator__C": C.PROBE_C_GRID},
         cv=GroupKFold(n_splits=5),
         scoring="roc_auc_ovr",
         n_jobs=C.PROBE_N_JOBS,
@@ -192,7 +194,7 @@ def eval_probe(clf, sc, Xte, yte):
         "accuracy":     float(acc),
         "per_group_auc": {k: float(v) for k, v in per_group_auc.items()},
         "confusion_matrix": cm.tolist(),
-        "best_C":       float(clf.best_params_["C"]),
+        "best_C":       float(clf.best_params_["estimator__C"]),
     }
 
 

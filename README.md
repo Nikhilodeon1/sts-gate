@@ -46,45 +46,34 @@ source. Test A keeps the predefined splits unchanged, groups cross-validation
 by `group::source_shape_id`, and writes sensitivity outputs separately from
 primary-run results.
 
-## Create and transfer a compact dataset bundle
+## Lightweight pilot status
 
-The raw local MedalCare tree is about 26.2 GiB and contains many files Test A
-does not need. The indexed table already contains the group/split/model IDs and
-parameter values; Test A needs the indexed ECG waveforms. The packaging script
-stores all indexed waveforms after the existing per-lead z-score preprocessing,
-using adaptive per-lead int8 quantization in compressed shards, and includes the
-complete index metadata. A 128-record sample measured about 0.44 GiB projected
-for the 16,842 indexed records. The generated full bundle was 483,246,591 bytes
-(0.450 GiB). Quantization is lossy: the full bundle's signal-level RMSE was
-0.00919 and maximum absolute normalized-signal error was 0.0697. This checks
-waveform reconstruction, not equivalence of final model embeddings or AUROC;
-interpret the Pod result as using the documented quantized input.
+The full-data bundle workflow is **not the intended first gate**. A full
+indexed-waveform bundle was generated during compression feasibility testing,
+but it includes all 16,842 indexed records, uses lossy int8 quantization, and
+has not been shown to preserve downstream embeddings or AUROC. Do not upload or
+use that archive for the initial gate.
 
-From PowerShell on the local Windows machine:
+A pilot can validate setup, waveform loading, ECG-FM inference, runtime, and
+end-to-end plumbing; its AUROC is exploratory, not a Test A result. See
+`PROJECT_STATUS_REPORT.md` for the verified state and pilot scope.
 
-```powershell
-cd C:\Users\nikhi\Codes\TEST\sts-gate
-C:\Users\nikhi\Codes\TEST\venv\Scripts\python.exe `
-  src\package_medalcare.py `
-  --output C:\Users\nikhi\Codes\TEST\MedalCare-XL-pod-bundle.zip
+Build the pilot bundle locally (same bundle format as the full one; 5 train +
+1 validation + 1 test model per group, at most 10 ECGs per model, `run_S64` and
+`run_S67` dropped, original splits and model IDs kept; selection rules and seed
+are recorded in `bundle.json`):
+
+```bash
+python src/package_medalcare.py --pilot --output /path/to/MedalCare-XL-pilot.zip
 ```
 
-The script validates that indexed source files exist, all eight groups and
-splits are represented, and model IDs do not cross predefined splits. It
-refuses to overwrite an existing output archive. Keep the printed SHA-256 and
-final size for verification. The archive contains only indexed ECG inputs,
-metadata, and bundle-format information—not raw text CSVs or parameter files
-that are already represented in the manifest.
+Upload only that ZIP and the checkpoint, run `scripts/pod_setup.sh` (give it the
+pilot ZIP as the bundle archive), then on the Pod:
 
-Upload `MedalCare-XL-pod-bundle.zip` to persistent Pod home using the Jupyter
-file browser. In a separate transfer, make the pretrained
-`mimic_iv_ecg_physionet_pretrained.pt` checkpoint available to the Pod. That
-checkpoint is about 1.02 GiB locally, so the dataset bundle can be under 1 GiB
-but the bundle plus checkpoint cannot. Do not add either asset to Git.
+```bash
+bash scripts/pod_pilot.sh smoke   # 24 ECGs: model load, decode, inference, timing; no AUROC
+bash scripts/pod_pilot.sh probe   # all pilot ECGs through the Test A probe; exploratory only
+```
 
-Then run `bash scripts/pod_setup.sh`; at its prompts, give the uploaded ZIP path
-and real checkpoint path. Setup extracts the bundle under `/tmp/ecg-gate`,
-validates its manifest, and saves the config. Run `bash scripts/pod_status.sh`
-and proceed only if it reports the extracted bundle, checkpoint, CUDA, and
-fairseq imports valid. On restart, setup re-extracts from the ZIP in persistent
-home because `/tmp` is ephemeral.
+`pod_pilot.sh` does not run Exp 1 or Test A and refuses a bundle without pilot
+metadata. Results go to `runs/pilot_smoke.json` / `runs/pilot_probe.json`.
