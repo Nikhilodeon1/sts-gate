@@ -195,5 +195,6 @@ if __name__ == "__main__":
     result["total_seconds"] = round(time.time() - t_start, 2)
     C.RUNS_DIR.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(result, indent=2), encoding="utf-8")
-    print(json.dumps(result, indent=2))
-    print(f"Saved {out_path}")
+    if args.tier == "smoke":
+        print(json.dumps(result, indent=2))
+    print(f"Saved {out_path}  (full results incl. confusion matrices are in that file)")
