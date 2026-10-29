@@ -43,4 +43,4 @@ print("torch:", torch.__version__, "| GPU:", torch.cuda.get_device_name(0))
 '
 
 printf '[%s] Pilot tier: %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$TIER"
-"$PYTHON" -u "$PROJECT_ROOT/src/pilot.py" --tier "$TIER" --device cuda 2>&1 | tee -a "${LOG_DIR}/pilot-${TIER}.log"
+"$PYTHON" -u "$PROJECT_ROOT/src/pilot.py" --tier "$TIER" --device cuda "${@:2}" 2>&1 | tee -a "${LOG_DIR}/pilot-${TIER}.log"

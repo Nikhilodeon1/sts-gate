@@ -90,10 +90,29 @@ def run_smoke(index, device):
     }
 
 
-def run_probe(index, device):
+def _probe_layers(cache, label):
+    from probe import fit_probe_layer, eval_probe
+
+    labels, groups, splits = cache["labels"], cache["groups"], cache["splits"]
+    tr, va, te = splits == "train", splits == "validation", splits == "test"
+    layers = {}
+    for layer, X in sorted(cache["embeddings"].items()):
+        t1 = time.time()
+        clf, sc = fit_probe_layer(X[tr], labels[tr], groups[tr])
+        layers[layer] = {
+            "val": eval_probe(clf, sc, X[va], labels[va]),
+            "test": eval_probe(clf, sc, X[te], labels[te]),
+            "fit_seconds": round(time.time() - t1, 1),
+        }
+        print(f"  {label} layer {layer}: val AUROC={layers[layer]['val']['macro_auc']:.3f} "
+              f"test AUROC={layers[layer]['test']['macro_auc']:.3f}")
+    return layers
+
+
+def run_probe(index, device, ctrl_seeds=3):
     from sklearn.model_selection import GroupKFold
     from model import load_ecgfm
-    from probe import embed_medalcare, fit_probe_layer, eval_probe
+    from probe import embed_medalcare
 
     _check_decode(index)
     train = index[index["split"] == "train"]
@@ -108,29 +127,47 @@ def run_probe(index, device):
     t0 = time.time()
     cache = embed_medalcare(model, index, C.PROBE_LAYERS, device=device)
     embed_s = time.time() - t0
-    labels, groups, splits = cache["labels"], cache["groups"], cache["splits"]
-    tr, va, te = splits == "train", splits == "validation", splits == "test"
-
-    layers = {}
-    for layer, X in sorted(cache["embeddings"].items()):
-        t1 = time.time()
-        clf, sc = fit_probe_layer(X[tr], labels[tr], groups[tr])
-        layers[layer] = {
-            "val": eval_probe(clf, sc, X[va], labels[va]),
-            "test": eval_probe(clf, sc, X[te], labels[te]),
-            "fit_seconds": round(time.time() - t1, 1),
-        }
-        print(f"  layer {layer}: val AUROC={layers[layer]['val']['macro_auc']:.3f} "
-              f"test AUROC={layers[layer]['test']['macro_auc']:.3f}")
-    return {
+    splits = cache["splits"]
+    layers = _probe_layers(cache, "pretrained")
+    result = {
         "tier": "probe",
         "n_ecgs": len(index),
-        "n_train": int(tr.sum()), "n_val": int(va.sum()), "n_test": int(te.sum()),
+        "n_train": int((splits == "train").sum()),
+        "n_val": int((splits == "validation").sum()),
+        "n_test": int((splits == "test").sum()),
         "embed_seconds": round(embed_s, 2),
         "layer_results": layers,
         "note": "EXPLORATORY pilot metric; no verdict; not Test A; do not lock a layer from this.",
-        **_gpu_info(device),
     }
+
+    if ctrl_seeds > 0:
+        ctrl = []
+        for seed in range(ctrl_seeds):
+            ctrl_model, _, _ = load_ecgfm(random_init=True, seed=seed)
+            ctrl_model.to(device)
+            ctrl_cache = embed_medalcare(ctrl_model, index, C.PROBE_LAYERS, device=device)
+            ctrl.append(_probe_layers(ctrl_cache, f"ctrl seed{seed}"))
+            del ctrl_model
+        gap = {}
+        for layer in layers:
+            row = {}
+            for split in ("val", "test"):
+                mean_ctrl = float(np.mean([c[layer][split]["macro_auc"] for c in ctrl]))
+                row[split] = {
+                    "pretrained": layers[layer][split]["macro_auc"],
+                    "ctrl_mean": mean_ctrl,
+                    "ctrl_per_seed": [c[layer][split]["macro_auc"] for c in ctrl],
+                    "gap": layers[layer][split]["macro_auc"] - mean_ctrl,
+                }
+            gap[layer] = row
+        result["ctrl_seeds"] = ctrl_seeds
+        result["ctrl_layer_results"] = {f"seed{s}": c for s, c in enumerate(ctrl)}
+        result["pretrained_vs_ctrl"] = gap
+        print("\n  layer  split  pretrained  ctrl_mean   gap")
+        for layer, row in gap.items():
+            for split, r in row.items():
+                print(f"  {layer:>5}  {split:<5}  {r['pretrained']:.3f}       {r['ctrl_mean']:.3f}      {r['gap']:+.3f}")
+    return {**result, **_gpu_info(device)}
 
 
 if __name__ == "__main__":
@@ -138,6 +175,8 @@ if __name__ == "__main__":
     ap.add_argument("--tier", choices=["smoke", "probe"], required=True)
     ap.add_argument("--device", default="cpu")
     ap.add_argument("--out", type=Path, default=None)
+    ap.add_argument("--ctrl-seeds", type=int, default=3,
+                    help="probe tier: random-init control seeds (0 disables)")
     args = ap.parse_args()
 
     out_path = args.out or C.RUNS_DIR / f"pilot_{args.tier}.json"
@@ -146,7 +185,10 @@ if __name__ == "__main__":
     index, pilot_meta = _load_pilot_index()
     print(f"[pilot] {len(index)} ECGs; bundle purpose: {pilot_meta['purpose']}")
     t_start = time.time()
-    result = (run_smoke if args.tier == "smoke" else run_probe)(index, args.device)
+    if args.tier == "smoke":
+        result = run_smoke(index, args.device)
+    else:
+        result = run_probe(index, args.device, args.ctrl_seeds)
     result["pilot_selection"] = {k: pilot_meta[k] for k in
                                  ("seed", "train_models_per_group", "heldout_models_per_group",
                                   "max_ecgs_per_model", "excluded_run_ids", "records")}
