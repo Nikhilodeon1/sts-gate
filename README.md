@@ -77,3 +77,28 @@ bash scripts/pod_pilot.sh probe   # all pilot ECGs through the Test A probe; exp
 
 `pod_pilot.sh` does not run Exp 1 or Test A and refuses a bundle without pilot
 metadata. Results go to `runs/pilot_smoke.json` / `runs/pilot_probe.json`.
+
+
+## Google Colab workflow
+
+The original `scripts/pod_*.sh` scripts remain intact for JupyterHub pods. For
+Google Colab, use the `scripts/colab_*.sh` scripts, which stream progress in the
+foreground (so Colab notebook cells do not disconnect prematurely), optionally
+download the 1.02 GB ECG-FM checkpoint directly from HuggingFace at data-center
+speed, and auto-detect mounted Google Drive (`/content/drive/MyDrive/ecg-gate`)
+so cached embeddings and results survive runtime disconnects:
+
+```bash
+# 1. Setup dependencies, extract bundle to /tmp, and verify/download checkpoint
+bash scripts/colab_setup.sh --bundle /path/to/MedalCare-XL-pod-bundle.zip --download-ckpt
+
+# 2. Check hardware, paths, cached embeddings, and existing results
+bash scripts/colab_status.sh
+
+# 3. Run the workflow (streams live output; caches embeddings to Drive if mounted)
+bash scripts/colab_run.sh full-sensitivity   # Exp 0 -> Exp 1 -> Test A (excluding run_S64, run_S67)
+bash scripts/colab_run.sh full-primary       # Exp 0 -> Exp 1 -> Test A (all 16,842 ECGs)
+bash scripts/colab_run.sh probe-only         # Re-run Test A sensitivity on cached embeddings
+bash scripts/colab_run.sh pilot-smoke        # Pilot smoke tier (requires pilot bundle)
+bash scripts/colab_run.sh pilot-probe        # Pilot probe tier (requires pilot bundle)
+```

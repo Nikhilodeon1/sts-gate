@@ -18,7 +18,7 @@ from pathlib import Path
 from sklearn.linear_model import LogisticRegression
 from sklearn.multiclass import OneVsRestClassifier
 from sklearn.preprocessing import StandardScaler
-from sklearn.model_selection import GroupKFold, GridSearchCV
+from sklearn.model_selection import GroupKFold, StratifiedGroupKFold, GridSearchCV
 from sklearn.metrics import roc_auc_score, accuracy_score, confusion_matrix
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -150,13 +150,13 @@ def _cache_matches_index(cache: dict, index: pd.DataFrame) -> bool:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def fit_probe_layer(Xtr, ytr, geom_tr):
-    """Fit logistic regression with geometry-grouped CV. Returns fitted clf and scaler."""
+    """Fit logistic regression with stratified geometry-grouped CV. Returns fitted clf and scaler."""
     sc  = StandardScaler().fit(Xtr)
     clf = GridSearchCV(
         # OneVsRestClassifier == the old multi_class="ovr" (removed in scikit-learn 1.8)
         OneVsRestClassifier(LogisticRegression(max_iter=2000)),
         {"estimator__C": C.PROBE_C_GRID},
-        cv=GroupKFold(n_splits=5),
+        cv=StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=0),
         scoring="roc_auc_ovr",
         n_jobs=C.PROBE_N_JOBS,
         refit=True,
