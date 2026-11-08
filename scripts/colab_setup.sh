@@ -129,6 +129,7 @@ export ECG_SCRATCH_DIR="$SCRATCH_DIR"
 export ECG_CACHE_DIR="$CACHE_DIR"
 export ECG_RUNS_DIR="$RUNS_DIR"
 export FAIRSEQ_SIGNALS_REPO="${FAIRSEQ_SIGNALS_REPO:-${SCRATCH_DIR}/vendor/fairseq-signals-src}"
+export PYTHONPATH="${FAIRSEQ_SIGNALS_REPO}${PYTHONPATH:+:${PYTHONPATH}}"
 export ECG_PROBE_N_JOBS="${ECG_PROBE_N_JOBS:-4}"
 export PIP_NO_CACHE_DIR=1
 
@@ -244,6 +245,7 @@ log "Installing Python dependencies and fairseq-signals..."
     printf 'export ECG_RUNS_DIR=%q\n' "$RUNS_DIR"
     printf 'export ECG_LOG_DIR=%q\n' "$LOG_DIR"
     printf 'export FAIRSEQ_SIGNALS_REPO=%q\n' "$FAIRSEQ_SIGNALS_REPO"
+    printf 'export PYTHONPATH=%q\n' "${FAIRSEQ_SIGNALS_REPO}"
     printf 'export ECG_PROBE_N_JOBS=%q\n' "$ECG_PROBE_N_JOBS"
     if [[ -n "$PERSIST_DIR" ]]; then
         printf 'export ECG_PERSIST_DIR=%q\n' "$PERSIST_DIR"

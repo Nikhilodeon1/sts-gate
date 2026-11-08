@@ -51,6 +51,18 @@ def install_fairseq_signals(python: Path):
         if result.returncode != 0:
             raise subprocess.CalledProcessError(result.returncode, result.args)
 
+    # Patch fairseq-signals compatibility with transformers >= 5.0 (which removed
+    # DataCollatorForWholeWordMask, only imported in unused ecg_text_dataset.py)
+    ecg_text_py = FAIRSEQ_SIGNALS_DIR / "fairseq_signals" / "data" / "ecg_text" / "ecg_text_dataset.py"
+    if ecg_text_py.exists():
+        txt = ecg_text_py.read_text(encoding="utf-8")
+        if "DataCollatorForWholeWordMask," in txt:
+            txt = txt.replace(
+                "    DataCollatorForWholeWordMask,\n",
+                "",
+            ) + "\ntry:\n    from transformers import DataCollatorForWholeWordMask\nexcept ImportError:\n    DataCollatorForWholeWordMask = None\n"
+            ecg_text_py.write_text(txt, encoding="utf-8")
+
     print("Installing fairseq-signals from source...")
     subprocess.run(
         [str(python), "-m", "pip", "install", "--quiet", "-e", str(FAIRSEQ_SIGNALS_DIR)],
@@ -59,9 +71,13 @@ def install_fairseq_signals(python: Path):
 
 
 def check_package(name: str, python: Path) -> bool:
+    env = os.environ.copy()
+    existing_pp = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = f"{FAIRSEQ_SIGNALS_DIR}{os.pathsep}{existing_pp}" if existing_pp else str(FAIRSEQ_SIGNALS_DIR)
     result = subprocess.run(
         [str(python), "-c", f"import {name.replace('-','_')}"],
-        capture_output=True
+        capture_output=True,
+        env=env,
     )
     return result.returncode == 0
 
@@ -82,10 +98,8 @@ def run_install(no_fairseq: bool = False, python: Path = Path(sys.executable)):
 
     # fairseq-signals (the model framework)
     if not no_fairseq:
-        if not check_package("fairseq_signals", python):
-            install_fairseq_signals(python)
-        else:
-            print("fairseq_signals already installed.")
+        # Always ensure fairseq-signals is patched and installed cleanly
+        install_fairseq_signals(python)
 
     # Verify required project packages, including the model framework unless skipped.
     print("\n--- Verification ---")
