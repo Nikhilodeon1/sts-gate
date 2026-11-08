@@ -110,15 +110,19 @@ def _probe_layers(cache, label):
 
 
 def run_probe(index, device, ctrl_seeds=3):
-    from sklearn.model_selection import StratifiedGroupKFold
     from model import load_ecgfm
-    from probe import embed_medalcare
+    from probe import embed_medalcare, make_stratified_group_folds
 
     _check_decode(index)
     train = index[index["split"] == "train"]
     n_classes = len(C.GROUP_LABELS)
-    splitter = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=0)
-    for k, (a, b) in enumerate(splitter.split(train, train["group"], train["model_id"])):
+    folds = make_stratified_group_folds(
+        train["group"].map(C.GROUP_TO_INT).to_numpy(),
+        train["model_id"].astype(str).to_numpy(),
+        n_splits=5,
+        seed=0,
+    )
+    for k, (a, b) in enumerate(folds):
         if train.iloc[a]["group"].nunique() < n_classes or train.iloc[b]["group"].nunique() < n_classes:
             raise SystemExit(f"CV fold {k} is missing a class; pilot probe not run. Change --pilot-seed.")
 

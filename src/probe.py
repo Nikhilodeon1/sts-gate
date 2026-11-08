@@ -149,19 +149,69 @@ def _cache_matches_index(cache: dict, index: pd.DataFrame) -> bool:
 # Probe fitting and evaluation
 # ─────────────────────────────────────────────────────────────────────────────
 
+def make_stratified_group_folds(
+    y: np.ndarray,
+    groups: np.ndarray,
+    n_splits: int = 5,
+    seed: int = 0,
+) -> list[tuple[np.ndarray, np.ndarray]]:
+    """Build deterministic group-disjoint CV folds with balanced per-class group counts.
+
+    Unlike sklearn's StratifiedGroupKFold (which in sklearn <1.8 can leave folds
+    missing a class when groups are pure and group sizes vary across classes),
+    this assigns each class's unique groups across the folds by fewest groups of
+    that class first (breaking ties by sample load), guaranteeing every fold gets
+    >=1 group from every class whenever each class has >= n_splits groups.
+    """
+    y_arr = np.asarray(y)
+    g_arr = np.asarray(groups, dtype=str)
+    rng = np.random.default_rng(seed)
+
+    group_to_fold: dict[str, int] = {}
+    for cls in sorted(np.unique(y_arr)):
+        cls_mask = (y_arr == cls)
+        cls_groups, cls_counts = np.unique(g_arr[cls_mask], return_counts=True)
+        perm = rng.permutation(len(cls_groups))
+        cls_groups = cls_groups[perm]
+        cls_counts = cls_counts[perm]
+        order = np.argsort(-cls_counts, kind="stable")
+        cls_groups = cls_groups[order]
+        cls_counts = cls_counts[order]
+
+        fold_cls_load = np.zeros(n_splits, dtype=int)
+        fold_cls_n_groups = np.zeros(n_splits, dtype=int)
+        for grp, cnt in zip(cls_groups, cls_counts):
+            best_fold = min(
+                range(n_splits),
+                key=lambda f: (fold_cls_n_groups[f], fold_cls_load[f], f),
+            )
+            group_to_fold[str(grp)] = best_fold
+            fold_cls_n_groups[best_fold] += 1
+            fold_cls_load[best_fold] += int(cnt)
+
+    sample_folds = np.array([group_to_fold[str(g)] for g in g_arr], dtype=int)
+    folds: list[tuple[np.ndarray, np.ndarray]] = []
+    for k in range(n_splits):
+        val_idx = np.where(sample_folds == k)[0]
+        train_idx = np.where(sample_folds != k)[0]
+        folds.append((train_idx, val_idx))
+    return folds
+
+
 def fit_probe_layer(Xtr, ytr, geom_tr):
     """Fit logistic regression with stratified geometry-grouped CV. Returns fitted clf and scaler."""
-    sc  = StandardScaler().fit(Xtr)
+    sc = StandardScaler().fit(Xtr)
+    folds = make_stratified_group_folds(ytr, geom_tr, n_splits=5, seed=0)
     clf = GridSearchCV(
         # OneVsRestClassifier == the old multi_class="ovr" (removed in scikit-learn 1.8)
         OneVsRestClassifier(LogisticRegression(max_iter=2000)),
         {"estimator__C": C.PROBE_C_GRID},
-        cv=StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=0),
+        cv=folds,
         scoring="roc_auc_ovr",
         n_jobs=C.PROBE_N_JOBS,
         refit=True,
     )
-    clf.fit(sc.transform(Xtr), ytr, groups=geom_tr)
+    clf.fit(sc.transform(Xtr), ytr)
     return clf, sc
 
 

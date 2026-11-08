@@ -150,7 +150,8 @@ def _plot_sample_ecgs(df: pd.DataFrame, n_per_group: int = 3):
 
             for row_i, (_, row) in enumerate(sample.iterrows()):
                 try:
-                    arr = np.loadtxt(row["ecg_path"], delimiter=",")  # (12, 5000)
+                    from data import load_medalcare
+                    arr = load_medalcare(row["ecg_path"])[0]  # (12, 2500)
                     for lead_i in range(12):
                         axes[row_i, lead_i].plot(arr[lead_i, :2500], linewidth=0.5)
                         axes[row_i, lead_i].set_xticks([]); axes[row_i, lead_i].set_yticks([])
