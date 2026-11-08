@@ -63,7 +63,11 @@ for res in \
     "${RUNS_DIR}/pilot_smoke.json" \
     "${RUNS_DIR}/pilot_probe.json" \
     "${RUNS_DIR}/A_results_sensitivity_without_S64_S67.json" \
-    "${RUNS_DIR}/A_results.json"; do
+    "${RUNS_DIR}/A_results.json" \
+    "${RUNS_DIR}/B_results_sensitivity_without_S64_S67.json" \
+    "${RUNS_DIR}/B_results_ctrl_sensitivity_without_S64_S67.json" \
+    "${RUNS_DIR}/C_results_sensitivity_without_S64_S67.json" \
+    "${RUNS_DIR}/C_results_sensitivity_without_S64_S67_with_run_id_covariate.json"; do
     if [[ -f "$res" ]]; then
         ok "Found $res"
         "$PYTHON" - "$res" <<'PY'
@@ -71,7 +75,9 @@ import json, sys
 with open(sys.argv[1], encoding="utf-8") as f:
     d = json.load(f)
 for k in ("tier", "verdict", "n_ecgs", "n_index_records", "n_excluded_records",
-          "best_layer", "best_val_auc", "test_auc", "gap_vs_ctrl", "ctrl_mean_auc", "total_seconds"):
+          "best_layer", "best_val_auc", "test_auc", "gap_vs_ctrl", "ctrl_mean_auc",
+          "scale", "checks", "n_confirmed_total", "n_physiology_atoms", "n_morphology_atoms",
+          "perm_null_mean", "perm_null_p95", "ctrl_confirmed_atoms", "moderate_thr_015", "total_seconds"):
     if k in d:
         print(f"  {k}: {d[k]}")
 PY

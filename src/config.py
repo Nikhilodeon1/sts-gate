@@ -106,7 +106,7 @@ EXPECTED_TOTAL_ECGS = sum(EXPECTED_FOLDER_COUNTS.values())
 PROBE_LAYERS  = [4, 6, 8, 10, 12]   # transformer layers to extract
 PROBE_C_GRID  = [0.01, 0.1, 1.0, 10.0]
 PROBE_N_JOBS  = max(1, int(os.environ.get("ECG_PROBE_N_JOBS", "4")))
-LOCKED_LAYER  = None   # set after Test A validation sweep; update before Test B
+LOCKED_LAYER  = 8      # locked from Test A validation sweep (Layer 8 val AUROC = 0.9986)
 
 # ── Test B – SAE settings (starting values, not yet benchmarked) ──────────────
 SAE_D_IN    = 768
