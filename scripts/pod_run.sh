@@ -1,16 +1,49 @@
 #!/usr/bin/env bash
+# Usage:
+#   bash scripts/pod_run.sh [mode] [--foreground] [--force-overwrite]
+#
+# Modes:
+#   full-sensitivity   (Default) Exp 0 -> Exp 1 -> Test A sensitivity
+#   test-b             Run Test B (BatchTopK SAE at Layer 8: Pretrained + Control)
+#   test-c             Run Test C (Mechanistic & Morphology Associations)
+#   depth-checks       Run TMLR Depth Checks (Monosemanticity, Causal Ablation, Waveforms)
+#   paper-suite        Run Test A Primary + Test B + Test C + Depth Checks
+#
+# Options:
+#   --foreground       Stream live to stdout and log
+#   --force-overwrite  Allow overwriting existing result files
 set -Eeuo pipefail
 
 PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 SCRIPT_PATH="${PROJECT_ROOT}/scripts/pod_run.sh"
 LOG_DIR="${HOME}/ecg-gate-logs"
-LOG_FILE="${LOG_DIR}/test-a-sensitivity.log"
-PID_FILE="${LOG_DIR}/test-a-sensitivity.pid"
-EXIT_FILE="${LOG_DIR}/test-a-sensitivity.exit"
-LOCK_DIR="${LOG_DIR}/test-a-sensitivity.lock"
 ENV_FILE="${HOME}/.ecg-gate.env"
+
+RUN_ACTION="full-sensitivity"
+FOREGROUND=0
+FORCE_OVERWRITE=0
+IS_WORKER=0
+
+for arg in "$@"; do
+    case "$arg" in
+        full-sensitivity|test-b|test-c|depth-checks|paper-suite)
+            RUN_ACTION="$arg" ;;
+        --foreground)
+            FOREGROUND=1 ;;
+        --force-overwrite)
+            FORCE_OVERWRITE=1 ;;
+        --worker)
+            IS_WORKER=1 ;;
+        *)
+            ;;
+    esac
+done
+
+LOG_FILE="${LOG_DIR}/${RUN_ACTION}.log"
+PID_FILE="${LOG_DIR}/${RUN_ACTION}.pid"
+EXIT_FILE="${LOG_DIR}/${RUN_ACTION}.exit"
+LOCK_DIR="${LOG_DIR}/${RUN_ACTION}.lock"
 RESULT_FILE="${PROJECT_ROOT}/runs/A_results_sensitivity_without_S64_S67.json"
-MODE="${1:-}"
 LOCK_OWNED=0
 
 mkdir -p "$LOG_DIR"
@@ -24,15 +57,10 @@ MEDALCARE_ROOT="${MEDALCARE_ROOT:-}"
 ECG_FM_CKPT="${ECG_FM_CKPT:-}"
 ECG_BUNDLE_ROOT="${ECG_BUNDLE_ROOT:-}"
 
-if [[ "$MODE" != "--worker" ]]; then
-    if [[ "$MODE" != "" && "$MODE" != "--foreground" ]]; then
-        printf 'Usage: bash scripts/pod_run.sh [--foreground]\n'
-        exit 2
-    fi
-
-    if [[ "$MODE" == "--foreground" ]]; then
+if [[ "$IS_WORKER" -eq 0 ]]; then
+    if [[ "$FOREGROUND" -eq 1 ]]; then
         exec > >(tee -a "$LOG_FILE") 2>&1
-        MODE="--worker"
+        IS_WORKER=1
     else
         if [[ -f "$PID_FILE" ]]; then
             old_pid="$(cat "$PID_FILE" 2>/dev/null || true)"
@@ -41,9 +69,9 @@ if [[ "$MODE" != "--worker" ]]; then
                 exit 2
             fi
         fi
-        if [[ -f "$RESULT_FILE" ]]; then
+        if [[ "$RUN_ACTION" == "full-sensitivity" && -f "$RESULT_FILE" && "$FORCE_OVERWRITE" -eq 0 ]]; then
             printf '[ERROR] A sensitivity result already exists: %s\n' "$RESULT_FILE"
-            printf 'Inspect it with scripts/pod_status.sh. Move/copy it before any intentional rerun; this script will not overwrite it.\n'
+            printf 'Inspect it with scripts/pod_status.sh. Pass --force-overwrite or move it before rerunning.\n'
             exit 2
         fi
         if [[ ! -x "${VENV_DIR}/bin/python" ]]; then
@@ -75,11 +103,12 @@ if [[ "$MODE" != "--worker" ]]; then
             printf '[ERROR] Configured Python cannot access CUDA. Run scripts/pod_status.sh and inspect setup before launching.\n'
             exit 2
         fi
-        nohup bash "$SCRIPT_PATH" --worker >> "$LOG_FILE" 2>&1 < /dev/null &
+        nohup bash "$SCRIPT_PATH" "$RUN_ACTION" --worker \
+            $([[ "$FORCE_OVERWRITE" -eq 1 ]] && printf -- '--force-overwrite') >> "$LOG_FILE" 2>&1 < /dev/null &
         run_pid=$!
         printf '%s\n' "$run_pid" > "${PID_FILE}.tmp"
         mv -f "${PID_FILE}.tmp" "$PID_FILE"
-        printf 'Started guarded Test A sensitivity workflow.\n'
+        printf 'Started %s workflow.\n' "$RUN_ACTION"
         printf 'PID: %s\nLog: %s\n' "$run_pid" "$LOG_FILE"
         printf 'Check progress with: bash %s/scripts/pod_status.sh\n' "$PROJECT_ROOT"
         exit 0
@@ -218,27 +247,29 @@ print("GPU:", torch.cuda.get_device_name(0))
 print("fairseq_signals:", fairseq_signals.__file__)
 '
 
-run_step "Exp 0 smoke test" "$PYTHON" -u "$PROJECT_ROOT/src/exp0_smoke.py" --device cuda
-if ! grep -Fq '"verdict": "PASS"' "$step_log"; then
-    printf '[ERROR] Exp 0 did not report a PASS verdict. Test A was not started.\n'
-    exit 3
-fi
+case "$RUN_ACTION" in
+    full-sensitivity)
+        run_step "Exp 0 smoke test" "$PYTHON" -u "$PROJECT_ROOT/src/exp0_smoke.py" --device cuda
+        if ! grep -Fq '"verdict": "PASS"' "$step_log"; then
+            printf '[ERROR] Exp 0 did not report a PASS verdict. Test A was not started.\n'
+            exit 3
+        fi
 
-run_step "Exp 1 index and mapping validation" "$PYTHON" -u "$PROJECT_ROOT/src/exp1_index.py"
-if ! grep -Fq -- '- **Exp 1 verdict: PASS**' "$PROJECT_ROOT/mapping_report.md"; then
-    printf '[ERROR] mapping_report.md does not report Exp 1 PASS. Test A was not started.\n'
-    printf 'Inspect %s/mapping_report.md and the log above before proceeding.\n' "$PROJECT_ROOT"
-    exit 3
-fi
+        run_step "Exp 1 index and mapping validation" "$PYTHON" -u "$PROJECT_ROOT/src/exp1_index.py"
+        if ! grep -Fq -- '- **Exp 1 verdict: PASS**' "$PROJECT_ROOT/mapping_report.md"; then
+            printf '[ERROR] mapping_report.md does not report Exp 1 PASS. Test A was not started.\n'
+            printf 'Inspect %s/mapping_report.md and the log above before proceeding.\n' "$PROJECT_ROOT"
+            exit 3
+        fi
 
-run_step "Test A sensitivity analysis" "$PYTHON" -u "$PROJECT_ROOT/src/probe.py" \
-    --device cuda --ctrl-seeds 3 --exclude-run-ids run_S64 run_S67
+        run_step "Test A sensitivity analysis" "$PYTHON" -u "$PROJECT_ROOT/src/probe.py" \
+            --device cuda --ctrl-seeds 3 --exclude-run-ids run_S64 run_S67
 
-if [[ ! -s "$RESULT_FILE" ]]; then
-    printf '[ERROR] Probe exited without creating a non-empty result file: %s\n' "$RESULT_FILE"
-    exit 4
-fi
-"$PYTHON" - "$RESULT_FILE" <<'PY'
+        if [[ ! -s "$RESULT_FILE" ]]; then
+            printf '[ERROR] Probe exited without creating a non-empty result file: %s\n' "$RESULT_FILE"
+            exit 4
+        fi
+        "$PYTHON" - "$RESULT_FILE" <<'PY'
 import json, sys
 path = sys.argv[1]
 with open(path, encoding="utf-8") as f:
@@ -253,6 +284,41 @@ print("Excluded run IDs:", result["excluded_run_ids"])
 print("Indexed records:", result.get("n_index_records"))
 print("Excluded records:", result.get("n_excluded_records"))
 PY
+        ;;
+    test-b)
+        run_step "Test B (Pretrained SAE)" "$PYTHON" -u "$PROJECT_ROOT/src/sae.py" \
+            --layer 8 --device cuda --exclude-run-ids run_S64 run_S67
+        run_step "Test B (Random-Init Control SAE)" "$PYTHON" -u "$PROJECT_ROOT/src/sae.py" \
+            --layer 8 --device cuda --ctrl --seed 0 --exclude-run-ids run_S64 run_S67
+        ;;
+    test-c)
+        run_step "Test C (Biophysical Associations)" "$PYTHON" -u "$PROJECT_ROOT/src/assoc.py" \
+            --layer 8 --device cuda --exclude-run-ids run_S64 run_S67
+        run_step "Test C sensitivity (+ run_id covariate)" "$PYTHON" -u "$PROJECT_ROOT/src/assoc.py" \
+            --layer 8 --device cuda --include-run-id-covariate --exclude-run-ids run_S64 run_S67
+        ;;
+    depth-checks)
+        run_step "TMLR Depth Checks" "$PYTHON" -u "$PROJECT_ROOT/src/interpretability_depth.py" \
+            --layer 8 --device cuda --exclude-run-ids run_S64 run_S67 --all
+        ;;
+    paper-suite)
+        run_step "Exp 0 smoke test" "$PYTHON" -u "$PROJECT_ROOT/src/exp0_smoke.py" --device cuda
+        run_step "Exp 1 index validation" "$PYTHON" -u "$PROJECT_ROOT/src/exp1_index.py"
+        run_step "Test A primary" "$PYTHON" -u "$PROJECT_ROOT/src/probe.py" --device cuda --ctrl-seeds 3
+        run_step "Test A sensitivity" "$PYTHON" -u "$PROJECT_ROOT/src/probe.py" \
+            --device cuda --ctrl-seeds 3 --exclude-run-ids run_S64 run_S67
+        run_step "Test B (Pretrained SAE)" "$PYTHON" -u "$PROJECT_ROOT/src/sae.py" \
+            --layer 8 --device cuda --exclude-run-ids run_S64 run_S67
+        run_step "Test B (Control SAE)" "$PYTHON" -u "$PROJECT_ROOT/src/sae.py" \
+            --layer 8 --device cuda --ctrl --seed 0 --exclude-run-ids run_S64 run_S67
+        run_step "Test C (Biophysical Associations)" "$PYTHON" -u "$PROJECT_ROOT/src/assoc.py" \
+            --layer 8 --device cuda --exclude-run-ids run_S64 run_S67
+        run_step "Test C sensitivity (+ run_id covariate)" "$PYTHON" -u "$PROJECT_ROOT/src/assoc.py" \
+            --layer 8 --device cuda --include-run-id-covariate --exclude-run-ids run_S64 run_S67
+        run_step "TMLR Depth Checks" "$PYTHON" -u "$PROJECT_ROOT/src/interpretability_depth.py" \
+            --layer 8 --device cuda --exclude-run-ids run_S64 run_S67 --all
+        ;;
+esac
 
 log "Test A sensitivity result: $RESULT_FILE"
 log "Workflow completed. Check the verdict and metrics in the result JSON."

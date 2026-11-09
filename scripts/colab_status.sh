@@ -67,7 +67,9 @@ for res in \
     "${RUNS_DIR}/B_results_sensitivity_without_S64_S67.json" \
     "${RUNS_DIR}/B_results_ctrl_sensitivity_without_S64_S67.json" \
     "${RUNS_DIR}/C_results_sensitivity_without_S64_S67.json" \
-    "${RUNS_DIR}/C_results_sensitivity_without_S64_S67_with_run_id_covariate.json"; do
+    "${RUNS_DIR}/C_results_sensitivity_without_S64_S67_with_run_id_covariate.json" \
+    "${RUNS_DIR}/monosemanticity_audit.json" \
+    "${RUNS_DIR}/causal_ablation.json"; do
     if [[ -f "$res" ]]; then
         ok "Found $res"
         "$PYTHON" - "$res" <<'PY'

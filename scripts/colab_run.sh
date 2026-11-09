@@ -12,7 +12,8 @@
 #   probe-only         Re-run Test A sensitivity directly (reuses cached embeddings if present)
 #   test-b             Run Test B (BatchTopK SAE at Layer 8: Pretrained + Random-Init Control)
 #   test-c             Run Test C (Mechanistic & Morphology Associations + 1,000-perm & random-init nulls)
-#   paper-suite        Run Test A Primary + Test B (Pretrained & Ctrl) + Test C (Primary & run_id-covariate)
+#   depth-checks       Run TMLR Depth Checks (Monosemanticity, Causal Ablation, Waveform Grounding)
+#   paper-suite        Run Test A Primary + Test B + Test C + Depth Checks
 #   pilot-smoke        Run pilot smoke tier (24 ECGs) on a pilot bundle
 #   pilot-probe        Run pilot probe tier (560 ECGs) on a pilot bundle
 #
@@ -38,7 +39,7 @@ EXTRA_ARGS=()
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        full-sensitivity|full-primary|probe-only|test-b|test-c|paper-suite|pilot-smoke|pilot-probe)
+        full-sensitivity|full-primary|probe-only|test-b|test-c|depth-checks|paper-suite|pilot-smoke|pilot-probe)
             MODE="$1"; shift ;;
         --background)
             BACKGROUND=1; shift ;;
@@ -202,25 +203,33 @@ case "$MODE" in
         "$PYTHON" -u "$PROJECT_ROOT/src/assoc.py" \
             --layer 8 --device cuda --include-run-id-covariate --exclude-run-ids run_S64 run_S67 "${EXTRA_ARGS[@]}"
         ;;
+    depth-checks)
+        log "Running TMLR Interpretability Depth Checks (Monosemanticity, Causal Ablation, Waveforms)..."
+        "$PYTHON" -u "$PROJECT_ROOT/src/interpretability_depth.py" \
+            --layer 8 --device cuda --exclude-run-ids run_S64 run_S67 --all "${EXTRA_ARGS[@]}"
+        ;;
     paper-suite)
         if [[ ! -f "${RUNS_DIR}/A_results.json" || "$FORCE_OVERWRITE" -eq 1 ]]; then
             maybe_backup_result "${RUNS_DIR}/A_results.json"
-            log "[Paper Suite 1/4] Running Test A Primary (all 16,842 ECGs)..."
+            log "[Paper Suite 1/5] Running Test A Primary (all 16,842 ECGs)..."
             "$PYTHON" -u "$PROJECT_ROOT/src/probe.py" --device cuda --ctrl-seeds 3
         else
-            log "[Paper Suite 1/4] Found existing ${RUNS_DIR}/A_results.json; skipping Test A Primary."
+            log "[Paper Suite 1/5] Found existing ${RUNS_DIR}/A_results.json; skipping Test A Primary."
         fi
-        log "[Paper Suite 2/4] Running Test B (BatchTopK SAE at Layer 8, Pretrained + Control)..."
+        log "[Paper Suite 2/5] Running Test B (BatchTopK SAE at Layer 8, Pretrained + Control)..."
         "$PYTHON" -u "$PROJECT_ROOT/src/sae.py" \
             --layer 8 --device cuda --exclude-run-ids run_S64 run_S67
         "$PYTHON" -u "$PROJECT_ROOT/src/sae.py" \
             --layer 8 --device cuda --ctrl --seed 0 --exclude-run-ids run_S64 run_S67
-        log "[Paper Suite 3/4] Running Test C (Mechanistic & Morphology Associations at Layer 8)..."
+        log "[Paper Suite 3/5] Running Test C (Mechanistic & Morphology Associations at Layer 8)..."
         "$PYTHON" -u "$PROJECT_ROOT/src/assoc.py" \
             --layer 8 --device cuda --exclude-run-ids run_S64 run_S67
-        log "[Paper Suite 4/4] Running Test C sensitivity (+ run_id covariate)..."
+        log "[Paper Suite 4/5] Running Test C sensitivity (+ run_id covariate)..."
         "$PYTHON" -u "$PROJECT_ROOT/src/assoc.py" \
             --layer 8 --device cuda --include-run-id-covariate --exclude-run-ids run_S64 run_S67
+        log "[Paper Suite 5/5] Running TMLR Depth Checks (Monosemanticity, Causal Ablation, Waveforms)..."
+        "$PYTHON" -u "$PROJECT_ROOT/src/interpretability_depth.py" \
+            --layer 8 --device cuda --exclude-run-ids run_S64 run_S67 --all
         ;;
 esac
 
