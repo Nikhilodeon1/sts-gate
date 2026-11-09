@@ -1,0 +1,31 @@
+{
+  "layer": 8,
+  "tag": "ctrl_seed0",
+  "ctrl": true,
+  "seed": 0,
+  "excluded_run_ids": [
+    "run_S64",
+    "run_S67"
+  ],
+  "scale": 0.07994673706866182,
+  "checks": {
+    "token_source": "medalcare",
+    "ev_ptbxl": 0.9999999996044384,
+    "ev_sim": 0.9999999995950282,
+    "ev_train_per_token": 0.9999999996044384,
+    "ev_train_global": -0.030472682116803096,
+    "ev_held_per_token": 0.9999999995950282,
+    "ev_held_global": -0.04603889521767912,
+    "dead_fraction": 0.9962565302848816,
+    "mean_l0": 23.0,
+    "raw_val_auc": 0.8449840881873087,
+    "raw_test_auc": 0.8106500086473007,
+    "recon_val_auc": 0.784495618930171,
+    "recon_test_auc": 0.7661665679758191,
+    "sparse_z_val_auc": 0.816658101193056,
+    "sparse_z_test_auc": 0.7604645693563917,
+    "probe_drop_val": 0.0604884692571378,
+    "probe_drop_test": 0.04448344067148169,
+    "verdict": "MARGINAL"
+  }
+}

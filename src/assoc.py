@@ -680,6 +680,8 @@ def run_test_c(
 
     # ── Split masks ───────────────────────────────────────────────────────
     tr_mask   = (index["split"] == "train").values
+    va_mask   = (index["split"] == "validation").values
+    te_mask   = (index["split"] == "test").values
     held_mask = (index["split"].isin(["validation", "test"])).values
 
     # ── Discovery pass (train) ────────────────────────────────────────────
@@ -696,22 +698,26 @@ def run_test_c(
     print(f"  Discovered candidate (atom, param) pairs on train: "
           f"{len(disc_candidates_25)} (|rho|>={C.ASSOC_RHO_THR}), {len(disc_candidates_15)} (|rho|>=0.15)")
 
-    # ── Confirmation pass (held-out) ──────────────────────────────────────
-    print(f"[Test C] Confirmation pass ({held_mask.sum()} held-out ECGs)...")
+    # ── Confirmation pass (held-out combined & locked test split) ─────────
+    print(f"[Test C] Confirmation pass ({held_mask.sum()} held-out ECGs, {te_mask.sum()} locked test ECGs)...")
     confirmation = _run_associations(
         A_all[held_mask], index[held_mask], C_mat[held_mask],
         candidate_keys=disc_candidates_25 if disc_candidates_25 else disc_candidates_15,
     )
+    conf_test_locked = _run_associations(
+        A_all[te_mask], index[te_mask], C_mat[te_mask],
+        candidate_keys=disc_candidates_25 if disc_candidates_25 else disc_candidates_15,
+    )
 
-    def _collect_confirmed(rho_thr: float) -> pd.DataFrame:
+    def _collect_confirmed(conf_dict: dict, rho_thr: float) -> pd.DataFrame:
         rows = []
         for (atom_i, param), disc_row in discovery.items():
             if disc_row["q"] >= C.ASSOC_Q_THR or abs(disc_row["rho"]) < rho_thr:
                 continue
-            conf_row = confirmation.get((atom_i, param))
+            conf_row = conf_dict.get((atom_i, param))
             if conf_row is None:
                 continue
-            # Require consistent sign, q < 0.05, and |rho| >= rho_thr on held-out split
+            # Require consistent sign, q < 0.05, and |rho| >= rho_thr on confirmation split
             if (conf_row["q"] < C.ASSOC_Q_THR
                     and abs(conf_row["rho"]) >= rho_thr
                     and np.sign(disc_row["rho"]) == np.sign(conf_row["rho"])):
@@ -728,8 +734,9 @@ def run_test_c(
                 })
         return pd.DataFrame(rows)
 
-    confirmed_df = _collect_confirmed(C.ASSOC_RHO_THR)
-    confirmed_df_15 = _collect_confirmed(0.15)
+    confirmed_df = _collect_confirmed(confirmation, C.ASSOC_RHO_THR)
+    confirmed_df_15 = _collect_confirmed(confirmation, 0.15)
+    confirmed_locked_test_df = _collect_confirmed(conf_test_locked, C.ASSOC_RHO_THR)
 
     n_confirmed = int(confirmed_df["atom"].nunique()) if not confirmed_df.empty else 0
     n_pairs_confirmed = len(confirmed_df)
@@ -802,6 +809,23 @@ def run_test_c(
         "n_confirmed_pairs":  int(len(confirmed_df_15)),
         "per_param_confirmed_atoms": {k: int(v) for k, v in per_param_counts_15.items()},
     }
+
+    if not confirmed_locked_test_df.empty:
+        phys_atoms_te = set(confirmed_locked_test_df[confirmed_locked_test_df["param"].isin(MECHANISTIC_PARAMS)]["atom"])
+        morph_atoms_te = set(confirmed_locked_test_df[~confirmed_locked_test_df["param"].isin(MECHANISTIC_PARAMS)]["atom"]) - phys_atoms_te
+        results["locked_test_confirmation"] = {
+            "n_confirmed_total": int(confirmed_locked_test_df["atom"].nunique()),
+            "n_confirmed_pairs": int(len(confirmed_locked_test_df)),
+            "n_physiology_atoms": int(len(phys_atoms_te)),
+            "n_morphology_atoms": int(len(morph_atoms_te)),
+        }
+    else:
+        results["locked_test_confirmation"] = {
+            "n_confirmed_total": 0,
+            "n_confirmed_pairs": 0,
+            "n_physiology_atoms": 0,
+            "n_morphology_atoms": 0,
+        }
 
     # ── Pass / fail ───────────────────────────────────────────────────────
     ctrl_count = results.get("ctrl_confirmed_atoms") or 0

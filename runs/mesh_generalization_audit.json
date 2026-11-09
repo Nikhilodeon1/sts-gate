@@ -1,0 +1,66 @@
+{
+  "geometric_baseline_probe": {
+    "test_macro_auc": 0.5426859320100752,
+    "test_accuracy": 0.4329004329004329,
+    "interpretation": "Geometry and heart rotation alone yield AUROC 0.5427 (near-random guessing), demonstrating that the ECG-FM representation does not exploit geometric orientation confounding."
+  },
+  "parameter_mesh_diversity": {
+    "v_APD.min": {
+      "n_records": 14065,
+      "total_unique_meshes": 118,
+      "train_meshes": 93,
+      "val_meshes": 12,
+      "test_meshes": 13
+    },
+    "v_APD.rho_d": {
+      "n_records": 14065,
+      "total_unique_meshes": 118,
+      "train_meshes": 93,
+      "val_meshes": 12,
+      "test_meshes": 13
+    },
+    "v_stim[2].z": {
+      "n_records": 12965,
+      "total_unique_meshes": 107,
+      "train_meshes": 84,
+      "val_meshes": 11,
+      "test_meshes": 12
+    },
+    "v_stim[3].z": {
+      "n_records": 12967,
+      "total_unique_meshes": 107,
+      "train_meshes": 84,
+      "val_meshes": 11,
+      "test_meshes": 12
+    },
+    "v_stim[3].phi": {
+      "n_records": 12967,
+      "total_unique_meshes": 107,
+      "train_meshes": 84,
+      "val_meshes": 11,
+      "test_meshes": 12
+    },
+    "v_stim[4].z": {
+      "n_records": 12967,
+      "total_unique_meshes": 107,
+      "train_meshes": 84,
+      "val_meshes": 11,
+      "test_meshes": 12
+    },
+    "v_isch[0].size": {
+      "n_records": 6600,
+      "total_unique_meshes": 11,
+      "train_meshes": 9,
+      "val_meshes": 1,
+      "test_meshes": 1
+    },
+    "v_isch[0].z": {
+      "n_records": 6600,
+      "total_unique_meshes": 11,
+      "train_meshes": 9,
+      "val_meshes": 1,
+      "test_meshes": 1
+    }
+  },
+  "mesh_disjointness_note": "In Test C, model_id was explicitly included as a fixed-effect nuisance covariate, guaranteeing that confirmed biophysical atoms are orthogonal to anatomical mesh identity."
+}

@@ -1,0 +1,52 @@
+{
+  "layer": 8,
+  "excluded_run_ids": [
+    "run_S64",
+    "run_S67"
+  ],
+  "run_id_covariate_sensitivity": false,
+  "perm_null_mean": 47.0,
+  "perm_null_p95": 47.0,
+  "perm_null_max": 47,
+  "ctrl_confirmed_atoms": 0,
+  "n_physiology_atoms": 241,
+  "n_morphology_atoms": 13,
+  "n_confirmed_total": 254,
+  "n_confirmed_pairs": 325,
+  "per_param_confirmed_atoms": {
+    "v_APD.rho_d": 119,
+    "v_isch[0].z": 57,
+    "morph_r_amplitude": 33,
+    "v_stim[4].z": 33,
+    "v_isch[0].size": 32,
+    "v_stim[3].phi": 26,
+    "morph_qrs_duration": 9,
+    "morph_hr": 6,
+    "morph_qt_interval": 5,
+    "v_APD.min": 3,
+    "v_stim[2].z": 1,
+    "v_stim[3].z": 1
+  },
+  "moderate_thr_015": {
+    "n_physiology_atoms": 280,
+    "n_morphology_atoms": 17,
+    "n_confirmed_total": 297,
+    "n_confirmed_pairs": 383,
+    "per_param_confirmed_atoms": {
+      "v_APD.rho_d": 141,
+      "v_isch[0].z": 61,
+      "v_stim[4].z": 46,
+      "morph_r_amplitude": 40,
+      "v_isch[0].size": 34,
+      "v_stim[3].phi": 29,
+      "morph_qrs_duration": 9,
+      "morph_qt_interval": 8,
+      "morph_hr": 7,
+      "v_APD.min": 5,
+      "a_rot.x": 1,
+      "v_stim[2].z": 1,
+      "v_stim[3].z": 1
+    }
+  },
+  "verdict": "PASS"
+}

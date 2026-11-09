@@ -26,7 +26,7 @@ IS_WORKER=0
 
 for arg in "$@"; do
     case "$arg" in
-        full-sensitivity|test-b|test-c|depth-checks|paper-suite)
+        full-sensitivity|test-b|sae-multi-seed|test-c|depth-checks|paper-suite)
             RUN_ACTION="$arg" ;;
         --foreground)
             FOREGROUND=1 ;;
@@ -290,6 +290,14 @@ PY
             --layer 8 --device cuda --exclude-run-ids run_S64 run_S67
         run_step "Test B (Random-Init Control SAE)" "$PYTHON" -u "$PROJECT_ROOT/src/sae.py" \
             --layer 8 --device cuda --ctrl --seed 0 --exclude-run-ids run_S64 run_S67
+        ;;
+    sae-multi-seed)
+        run_step "Test B (SAE Seed 1)" "$PYTHON" -u "$PROJECT_ROOT/src/sae.py" \
+            --layer 8 --device cuda --seed 1 --exclude-run-ids run_S64 run_S67
+        run_step "Test B (SAE Seed 2)" "$PYTHON" -u "$PROJECT_ROOT/src/sae.py" \
+            --layer 8 --device cuda --seed 2 --exclude-run-ids run_S64 run_S67
+        run_step "SAE Multi-Seed Stability Audit" "$PYTHON" -u "$PROJECT_ROOT/src/interpretability_depth.py" \
+            --layer 8 --device cuda --exclude-run-ids run_S64 run_S67 --run-sae-stability
         ;;
     test-c)
         run_step "Test C (Biophysical Associations)" "$PYTHON" -u "$PROJECT_ROOT/src/assoc.py" \

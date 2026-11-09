@@ -528,26 +528,43 @@ def compute_probe_drop(
 
     n_tr = len(tr_idx)
     n_va = len(va_idx)
-    s_tr = slice(0, n_tr)
     s_va = slice(n_tr, n_tr + n_va)
     s_te = slice(n_tr + n_va, None)
 
-    y_tr, g_tr = labels[tr_idx], groups[tr_idx]
+    y_tr_full, g_tr_full = labels[tr_idx], groups[tr_idx]
     y_va = labels[va_idx]
     y_te = labels[te_idx]
 
-    clf_raw, sc_raw = fit_probe_layer(X_raw[s_tr], y_tr, g_tr)
+    # Standardize with Test A: use stratified balanced subsample (max 3000, seed 42)
+    max_train = 3000
+    if n_tr > max_train:
+        rng = np.random.default_rng(42)
+        chosen = []
+        for g_int in range(len(C.GROUP_LABELS)):
+            g_idx = np.where(y_tr_full == g_int)[0]
+            n_each = max_train // len(C.GROUP_LABELS)
+            if len(g_idx) > n_each:
+                g_idx = rng.choice(g_idx, n_each, replace=False)
+            chosen.append(g_idx)
+        tr_sub = np.concatenate(chosen)
+    else:
+        tr_sub = np.arange(n_tr)
+
+    y_tr = y_tr_full[tr_sub]
+    g_tr = g_tr_full[tr_sub]
+
+    clf_raw, sc_raw = fit_probe_layer(X_raw[tr_sub], y_tr, g_tr)
     raw_val = eval_probe(clf_raw, sc_raw, X_raw[s_va], y_va)
     raw_test = eval_probe(clf_raw, sc_raw, X_raw[s_te], y_te)
 
-    clf_rec, sc_rec = fit_probe_layer(X_rec[s_tr], y_tr, g_tr)
+    clf_rec, sc_rec = fit_probe_layer(X_rec[tr_sub], y_tr, g_tr)
     rec_val = eval_probe(clf_rec, sc_rec, X_rec[s_va], y_va)
     rec_test = eval_probe(clf_rec, sc_rec, X_rec[s_te], y_te)
 
     # For sparse codes z, keep non-dead atoms with highest variance on train split
-    var_tr = X_sp[s_tr].var(axis=0)
+    var_tr = X_sp[tr_sub].var(axis=0)
     top_atoms = np.argsort(-var_tr)[:min(768, (var_tr > 1e-8).sum() or 768)]
-    clf_sp, sc_sp = fit_probe_layer(X_sp[s_tr][:, top_atoms], y_tr, g_tr)
+    clf_sp, sc_sp = fit_probe_layer(X_sp[tr_sub][:, top_atoms], y_tr, g_tr)
     sp_val = eval_probe(clf_sp, sc_sp, X_sp[s_va][:, top_atoms], y_va)
     sp_test = eval_probe(clf_sp, sc_sp, X_sp[s_te][:, top_atoms], y_te)
 

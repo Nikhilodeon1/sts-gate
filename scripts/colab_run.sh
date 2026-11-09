@@ -39,7 +39,7 @@ EXTRA_ARGS=()
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        full-sensitivity|full-primary|probe-only|test-b|test-c|depth-checks|paper-suite|pilot-smoke|pilot-probe)
+        full-sensitivity|full-primary|probe-only|test-b|sae-multi-seed|test-c|depth-checks|paper-suite|pilot-smoke|pilot-probe)
             MODE="$1"; shift ;;
         --background)
             BACKGROUND=1; shift ;;
@@ -194,6 +194,17 @@ case "$MODE" in
         log "Running Test B (BatchTopK SAE at Layer 8, Random-Init Control seed 0)..."
         "$PYTHON" -u "$PROJECT_ROOT/src/sae.py" \
             --layer 8 --device cuda --ctrl --seed 0 --exclude-run-ids run_S64 run_S67 "${EXTRA_ARGS[@]}"
+        ;;
+    sae-multi-seed)
+        log "Running Test B SAE Seed 1..."
+        "$PYTHON" -u "$PROJECT_ROOT/src/sae.py" \
+            --layer 8 --device cuda --seed 1 --exclude-run-ids run_S64 run_S67 "${EXTRA_ARGS[@]}"
+        log "Running Test B SAE Seed 2..."
+        "$PYTHON" -u "$PROJECT_ROOT/src/sae.py" \
+            --layer 8 --device cuda --seed 2 --exclude-run-ids run_S64 run_S67 "${EXTRA_ARGS[@]}"
+        log "Running SAE Multi-Seed Stability Audit..."
+        "$PYTHON" -u "$PROJECT_ROOT/src/interpretability_depth.py" \
+            --layer 8 --device cuda --exclude-run-ids run_S64 run_S67 --run-sae-stability "${EXTRA_ARGS[@]}"
         ;;
     test-c)
         log "Running Test C (Mechanistic & Morphology Associations at Layer 8)..."
