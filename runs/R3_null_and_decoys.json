@@ -1,0 +1,184 @@
+{
+  "within_mesh_variance": {
+    "v_APD.min": {
+      "n": 14065,
+      "total_var": 51.82337075314553,
+      "within_stratum_var_fraction": 0.9925369240056369,
+      "n_strata_with_variation": 194
+    },
+    "v_APD.max": {
+      "n": 14065,
+      "total_var": 51.863469580021096,
+      "within_stratum_var_fraction": 0.9953341298702695,
+      "n_strata_with_variation": 194
+    },
+    "v_APD.rho_d": {
+      "n": 14065,
+      "total_var": 0.03011053109919546,
+      "within_stratum_var_fraction": 0.9842067924835642,
+      "n_strata_with_variation": 194
+    },
+    "v_APD.z_d": {
+      "n": 14065,
+      "total_var": 0.0008506179214681777,
+      "within_stratum_var_fraction": 0.9848793670642141,
+      "n_strata_with_variation": 194
+    },
+    "v_APD.v_d": {
+      "n": 14065,
+      "total_var": 0.0002177227245400375,
+      "within_stratum_var_fraction": 0.9950206838488251,
+      "n_strata_with_variation": 194
+    },
+    "v_stim[0].z": {
+      "n": 12965,
+      "total_var": 0.020677588161127892,
+      "within_stratum_var_fraction": 0.9933803820661415,
+      "n_strata_with_variation": 183
+    },
+    "v_stim[0].phi": {
+      "n": 12965,
+      "total_var": 0.387322718307031,
+      "within_stratum_var_fraction": 0.9941194651424804,
+      "n_strata_with_variation": 183
+    },
+    "v_stim[0].thr": {
+      "n": 12965,
+      "total_var": 0.010136763415596496,
+      "within_stratum_var_fraction": 0.9880032813667211,
+      "n_strata_with_variation": 183
+    },
+    "v_stim[1].z": {
+      "n": 12965,
+      "total_var": 0.013560162250556231,
+      "within_stratum_var_fraction": 0.994741076390829,
+      "n_strata_with_variation": 183
+    },
+    "v_stim[1].phi": {
+      "n": 12965,
+      "total_var": 0.7468922350306915,
+      "within_stratum_var_fraction": 0.9813444433336078,
+      "n_strata_with_variation": 183
+    },
+    "v_stim[2].z": {
+      "n": 12965,
+      "total_var": 0.030473806328878562,
+      "within_stratum_var_fraction": 0.97710472077915,
+      "n_strata_with_variation": 183
+    },
+    "v_stim[2].phi": {
+      "n": 12965,
+      "total_var": 0.3798686911804497,
+      "within_stratum_var_fraction": 0.9939926713125318,
+      "n_strata_with_variation": 183
+    },
+    "v_stim[3].z": {
+      "n": 12967,
+      "total_var": 0.0033021375489297126,
+      "within_stratum_var_fraction": 0.9947567324228341,
+      "n_strata_with_variation": 183
+    },
+    "v_stim[3].phi": {
+      "n": 12967,
+      "total_var": 0.7418102382375962,
+      "within_stratum_var_fraction": 0.9955222929669177,
+      "n_strata_with_variation": 183
+    },
+    "v_stim[4].time": {
+      "n": 12967,
+      "total_var": 75.66592943545486,
+      "within_stratum_var_fraction": 0.2766041973366563,
+      "n_strata_with_variation": 183
+    },
+    "v_stim[4].z": {
+      "n": 12967,
+      "total_var": 0.0205334549718094,
+      "within_stratum_var_fraction": 0.994150166116791,
+      "n_strata_with_variation": 183
+    },
+    "v_stim[4].phi": {
+      "n": 12967,
+      "total_var": 0.08457615227599719,
+      "within_stratum_var_fraction": 0.9948781015220792,
+      "n_strata_with_variation": 183
+    },
+    "v_isch[0].size": {
+      "n": 6600,
+      "total_var": 833.6596838734387,
+      "within_stratum_var_fraction": 0.9999966781210485,
+      "n_strata_with_variation": 87
+    },
+    "v_isch[0].z": {
+      "n": 6600,
+      "total_var": 0.05863337239869438,
+      "within_stratum_var_fraction": 0.9905089471556,
+      "n_strata_with_variation": 87
+    },
+    "v_isch[0].phi": {
+      "n": 6600,
+      "total_var": 2.943460450577035,
+      "within_stratum_var_fraction": 0.08779693813339048,
+      "n_strata_with_variation": 87
+    },
+    "v_isch[0].rho_eps_max": {
+      "n": 6600,
+      "total_var": 0.12247187786960513,
+      "within_stratum_var_fraction": 4.0028512801828855e-33,
+      "n_strata_with_variation": 0
+    },
+    "a_cv_t.BulkTissue": {
+      "n": 14065,
+      "total_var": 1840.071718938599,
+      "within_stratum_var_fraction": 0.21564895706435352,
+      "n_strata_with_variation": 8
+    },
+    "a_cv_t.BachmannsBundle": {
+      "n": 14065,
+      "total_var": 27503.147514051256,
+      "within_stratum_var_fraction": 0.014198906400413654,
+      "n_strata_with_variation": 8
+    },
+    "a_cv_t.CristaTerminalis": {
+      "n": 14065,
+      "total_var": 424.5818389817285,
+      "within_stratum_var_fraction": 0.9574242481654466,
+      "n_strata_with_variation": 8
+    },
+    "a_cv_t.PectinateMuscles": {
+      "n": 14065,
+      "total_var": 1159.7098221585475,
+      "within_stratum_var_fraction": 0.2300236363431392,
+      "n_strata_with_variation": 8
+    },
+    "a_cv_t.InferiorIsthmus": {
+      "n": 14065,
+      "total_var": 2496.560049913574,
+      "within_stratum_var_fraction": 0.13358010354349203,
+      "n_strata_with_variation": 8
+    },
+    "a_rot.x": {
+      "n": 13078,
+      "total_var": 265.46708666560284,
+      "within_stratum_var_fraction": 0.9370727439986215,
+      "n_strata_with_variation": 147
+    },
+    "a_rot.y": {
+      "n": 13078,
+      "total_var": 266.32426551891257,
+      "within_stratum_var_fraction": 0.9835772802880659,
+      "n_strata_with_variation": 147
+    },
+    "a_rot.z": {
+      "n": 13078,
+      "total_var": 267.84095034531254,
+      "within_stratum_var_fraction": 0.990408187940465,
+      "n_strata_with_variation": 147
+    },
+    "a_fibperc": {
+      "n": 14065,
+      "total_var": 138.66173366785594,
+      "within_stratum_var_fraction": 0.0,
+      "n_strata_with_variation": 0
+    }
+  }
+}

@@ -1,0 +1,515 @@
+{
+  "full_index": {
+    "n_ecgs": 16842,
+    "n_meshes": 144,
+    "ecgs_per_split": {
+      "train": 12022,
+      "validation": 2434,
+      "test": 2386
+    },
+    "meshes_per_split": {
+      "train": 109,
+      "validation": 17,
+      "test": 18
+    },
+    "per_class": {
+      "avblock": {
+        "ecgs": {
+          "train": 900,
+          "validation": 200,
+          "test": 200
+        },
+        "meshes": {
+          "train": 9,
+          "validation": 2,
+          "test": 2
+        }
+      },
+      "fam": {
+        "ecgs": {
+          "train": 1040,
+          "validation": 130,
+          "test": 130
+        },
+        "meshes": {
+          "train": 8,
+          "validation": 1,
+          "test": 1
+        }
+      },
+      "iab": {
+        "ecgs": {
+          "train": 994,
+          "validation": 124,
+          "test": 126
+        },
+        "meshes": {
+          "train": 48,
+          "validation": 5,
+          "test": 6
+        }
+      },
+      "lae": {
+        "ecgs": {
+          "train": 1040,
+          "validation": 130,
+          "test": 130
+        },
+        "meshes": {
+          "train": 8,
+          "validation": 1,
+          "test": 1
+        }
+      },
+      "lbbb": {
+        "ecgs": {
+          "train": 900,
+          "validation": 200,
+          "test": 200
+        },
+        "meshes": {
+          "train": 9,
+          "validation": 2,
+          "test": 2
+        }
+      },
+      "mi": {
+        "ecgs": {
+          "train": 5350,
+          "validation": 1250,
+          "test": 1200
+        },
+        "meshes": {
+          "train": 9,
+          "validation": 2,
+          "test": 2
+        }
+      },
+      "rbbb": {
+        "ecgs": {
+          "train": 898,
+          "validation": 200,
+          "test": 200
+        },
+        "meshes": {
+          "train": 9,
+          "validation": 2,
+          "test": 2
+        }
+      },
+      "sinus": {
+        "ecgs": {
+          "train": 900,
+          "validation": 200,
+          "test": 200
+        },
+        "meshes": {
+          "train": 9,
+          "validation": 2,
+          "test": 2
+        }
+      }
+    },
+    "class_mesh_pairs_test": 18,
+    "meshes_spanning_multiple_classes": 0
+  },
+  "sensitivity_index": {
+    "n_ecgs": 14065,
+    "n_meshes": 118,
+    "ecgs_per_split": {
+      "train": 11245,
+      "validation": 1434,
+      "test": 1386
+    },
+    "meshes_per_split": {
+      "train": 93,
+      "validation": 12,
+      "test": 13
+    },
+    "per_class": {
+      "avblock": {
+        "ecgs": {
+          "train": 900,
+          "validation": 100,
+          "test": 100
+        },
+        "meshes": {
+          "train": 9,
+          "validation": 1,
+          "test": 1
+        }
+      },
+      "fam": {
+        "ecgs": {
+          "train": 780,
+          "validation": 130,
+          "test": 130
+        },
+        "meshes": {
+          "train": 6,
+          "validation": 1,
+          "test": 1
+        }
+      },
+      "iab": {
+        "ecgs": {
+          "train": 737,
+          "validation": 124,
+          "test": 126
+        },
+        "meshes": {
+          "train": 36,
+          "validation": 5,
+          "test": 6
+        }
+      },
+      "lae": {
+        "ecgs": {
+          "train": 780,
+          "validation": 130,
+          "test": 130
+        },
+        "meshes": {
+          "train": 6,
+          "validation": 1,
+          "test": 1
+        }
+      },
+      "lbbb": {
+        "ecgs": {
+          "train": 900,
+          "validation": 100,
+          "test": 100
+        },
+        "meshes": {
+          "train": 9,
+          "validation": 1,
+          "test": 1
+        }
+      },
+      "mi": {
+        "ecgs": {
+          "train": 5350,
+          "validation": 650,
+          "test": 600
+        },
+        "meshes": {
+          "train": 9,
+          "validation": 1,
+          "test": 1
+        }
+      },
+      "rbbb": {
+        "ecgs": {
+          "train": 898,
+          "validation": 100,
+          "test": 100
+        },
+        "meshes": {
+          "train": 9,
+          "validation": 1,
+          "test": 1
+        }
+      },
+      "sinus": {
+        "ecgs": {
+          "train": 900,
+          "validation": 100,
+          "test": 100
+        },
+        "meshes": {
+          "train": 9,
+          "validation": 1,
+          "test": 1
+        }
+      }
+    },
+    "class_mesh_pairs_test": 13,
+    "meshes_spanning_multiple_classes": 0
+  },
+  "excluded_runs": {
+    "n_ecgs": 2777,
+    "n_meshes": 26,
+    "per_class_ecgs": {
+      "mi": 1200,
+      "fam": 260,
+      "lae": 260,
+      "iab": 257,
+      "avblock": 200,
+      "lbbb": 200,
+      "rbbb": 200,
+      "sinus": 200
+    }
+  },
+  "implied_token_extraction": {
+    "train_ecgs": 5000,
+    "held_ecgs_from_validation_plus_test": 1496,
+    "tokens_per_ecg": 312,
+    "train_tokens": 1560000,
+    "held_tokens": 466752,
+    "note": "Held-out pool is validation+test (not validation only); counts assume sae.extract_tokens defaults."
+  },
+  "confirmed_atom_sets": {
+    "n_pairs": 325,
+    "n_unique_atoms": 254,
+    "sizes": {
+      "APD": 120,
+      "stim": 58,
+      "isch": 74,
+      "morph": 37
+    },
+    "pairwise_intersections": {
+      "APD&stim": 4,
+      "APD&isch": 4,
+      "APD&morph": 8,
+      "stim&isch": 3,
+      "stim&morph": 16,
+      "isch&morph": 1
+    },
+    "triple_intersections": {
+      "APD&stim&isch": 0,
+      "APD&stim&morph": 1,
+      "APD&isch&morph": 0,
+      "stim&isch&morph": 0
+    },
+    "unions": {
+      "APD|stim": 174,
+      "APD|stim|isch": 241,
+      "APD|stim|morph": 188,
+      "all": 254
+    },
+    "only_isch": 66,
+    "per_param_unique_atoms": {
+      "morph_hr": 6,
+      "morph_qrs_duration": 9,
+      "morph_qt_interval": 5,
+      "morph_r_amplitude": 33,
+      "v_APD.min": 3,
+      "v_APD.rho_d": 119,
+      "v_isch[0].size": 32,
+      "v_isch[0].z": 57,
+      "v_stim[2].z": 1,
+      "v_stim[3].phi": 26,
+      "v_stim[3].z": 1,
+      "v_stim[4].z": 33
+    },
+    "abs_rho_conf_by_param": {
+      "morph_hr": {
+        "n_pairs": 6,
+        "median_abs": 0.3330739087944627,
+        "max_abs": 0.3828012989282165
+      },
+      "morph_qrs_duration": {
+        "n_pairs": 9,
+        "median_abs": 0.3248201565355435,
+        "max_abs": 0.4552453098379211
+      },
+      "morph_qt_interval": {
+        "n_pairs": 5,
+        "median_abs": 0.2968812756419074,
+        "max_abs": 0.4132980093259462
+      },
+      "morph_r_amplitude": {
+        "n_pairs": 33,
+        "median_abs": 0.3482198279587535,
+        "max_abs": 0.5568064707781508
+      },
+      "v_APD.min": {
+        "n_pairs": 3,
+        "median_abs": 0.2758462338355764,
+        "max_abs": 0.2788144852904413
+      },
+      "v_APD.rho_d": {
+        "n_pairs": 119,
+        "median_abs": 0.3497272642876114,
+        "max_abs": 0.6266010817213779
+      },
+      "v_isch[0].size": {
+        "n_pairs": 32,
+        "median_abs": 0.3111041321741278,
+        "max_abs": 0.4080167041658125
+      },
+      "v_isch[0].z": {
+        "n_pairs": 57,
+        "median_abs": 0.3098401601603288,
+        "max_abs": 0.4165811975920145
+      },
+      "v_stim[2].z": {
+        "n_pairs": 1,
+        "median_abs": 0.3982710969161026,
+        "max_abs": 0.3982710969161026
+      },
+      "v_stim[3].phi": {
+        "n_pairs": 26,
+        "median_abs": 0.38791410920348035,
+        "max_abs": 0.571931472513346
+      },
+      "v_stim[3].z": {
+        "n_pairs": 1,
+        "median_abs": 0.4144267152873398,
+        "max_abs": 0.4144267152873398
+      },
+      "v_stim[4].z": {
+        "n_pairs": 33,
+        "median_abs": 0.3348168405159409,
+        "max_abs": 0.4866351628810036
+      }
+    }
+  },
+  "A_sensitivity": {
+    "n_index_records": 14065,
+    "test_auc_best_layer": 0.9925379850639114,
+    "ctrl_val_aucs": [
+      0.8050201297970305,
+      0.8275159362168027,
+      0.8012280105729566
+    ],
+    "layer_test_macro_auc": {
+      "4": 0.9903798245599658,
+      "6": 0.9900971067936787,
+      "8": 0.9925379850639114,
+      "10": 0.9884365825232805,
+      "12": 0.985325975196742
+    },
+    "layer_val_macro_auc": {
+      "4": 0.995014282403243,
+      "6": 0.9959879048845302,
+      "8": 0.9985512834213939,
+      "10": 0.9919872012937485,
+      "12": 0.9899201201915075
+    }
+  },
+  "A_primary": {
+    "n_index_records": 16842,
+    "test_auc_best_layer": 0.99208597558385,
+    "ctrl_val_aucs": [
+      0.8528339571706972,
+      0.8173106503352219,
+      0.836881360948811
+    ],
+    "layer_test_macro_auc": {
+      "4": 0.9905313144230916,
+      "6": 0.9902979869781936,
+      "8": 0.99208597558385,
+      "10": 0.987783303246331,
+      "12": 0.9836649363048389
+    },
+    "layer_val_macro_auc": {
+      "4": 0.9950791284529745,
+      "6": 0.9954149932689118,
+      "8": 0.9967371438435951,
+      "10": 0.990473391100813,
+      "12": 0.9832663685783308
+    }
+  },
+  "B_pretrained": {
+    "token_source": "medalcare",
+    "ev_ptbxl": 0.8888096731941106,
+    "ev_sim": 0.8817636761464095,
+    "ev_train_per_token": 0.8888096731941106,
+    "ev_train_global": 0.8644448782368283,
+    "ev_held_per_token": 0.8817636761464095,
+    "ev_held_global": 0.8555666236656008,
+    "dead_fraction": 0.00341796875,
+    "mean_l0": 30.132126580358854,
+    "raw_val_auc": 0.9976907837134743,
+    "raw_test_auc": 0.9881561583805776,
+    "recon_val_auc": 0.9923697946336668,
+    "recon_test_auc": 0.9856287113569926,
+    "sparse_z_val_auc": 0.9901430060682112,
+    "sparse_z_test_auc": 0.9911432878539741,
+    "probe_drop_val": 0.005320989079807492,
+    "probe_drop_test": 0.0025274470235849833,
+    "verdict": "PASS"
+  },
+  "B_ctrl": {
+    "token_source": "medalcare",
+    "ev_ptbxl": 0.9999999996044384,
+    "ev_sim": 0.9999999995950282,
+    "ev_train_per_token": 0.9999999996044384,
+    "ev_train_global": -0.030472682116803096,
+    "ev_held_per_token": 0.9999999995950282,
+    "ev_held_global": -0.04603889521767912,
+    "dead_fraction": 0.9962565302848816,
+    "mean_l0": 23.0,
+    "raw_val_auc": 0.8449840881873087,
+    "raw_test_auc": 0.8106500086473007,
+    "recon_val_auc": 0.784495618930171,
+    "recon_test_auc": 0.7661665679758191,
+    "sparse_z_val_auc": 0.816658101193056,
+    "sparse_z_test_auc": 0.7604645693563917,
+    "probe_drop_val": 0.0604884692571378,
+    "probe_drop_test": 0.04448344067148169,
+    "verdict": "MARGINAL"
+  },
+  "C_results": {
+    "layer": 8,
+    "excluded_run_ids": [
+      "run_S64",
+      "run_S67"
+    ],
+    "run_id_covariate_sensitivity": false,
+    "perm_null_mean": 47.0,
+    "perm_null_p95": 47.0,
+    "perm_null_max": 47,
+    "ctrl_confirmed_atoms": 0,
+    "n_physiology_atoms": 241,
+    "n_morphology_atoms": 13,
+    "n_confirmed_total": 254,
+    "n_confirmed_pairs": 325,
+    "per_param_confirmed_atoms": {
+      "v_APD.rho_d": 119,
+      "v_isch[0].z": 57,
+      "morph_r_amplitude": 33,
+      "v_stim[4].z": 33,
+      "v_isch[0].size": 32,
+      "v_stim[3].phi": 26,
+      "morph_qrs_duration": 9,
+      "morph_hr": 6,
+      "morph_qt_interval": 5,
+      "v_APD.min": 3,
+      "v_stim[2].z": 1,
+      "v_stim[3].z": 1
+    },
+    "moderate_thr_015": {
+      "n_physiology_atoms": 280,
+      "n_morphology_atoms": 17,
+      "n_confirmed_total": 297,
+      "n_confirmed_pairs": 383,
+      "per_param_confirmed_atoms": {
+        "v_APD.rho_d": 141,
+        "v_isch[0].z": 61,
+        "v_stim[4].z": 46,
+        "morph_r_amplitude": 40,
+        "v_isch[0].size": 34,
+        "v_stim[3].phi": 29,
+        "morph_qrs_duration": 9,
+        "morph_qt_interval": 8,
+        "morph_hr": 7,
+        "v_APD.min": 5,
+        "a_rot.x": 1,
+        "v_stim[2].z": 1,
+        "v_stim[3].z": 1
+      }
+    },
+    "verdict": "PASS"
+  },
+  "C_perm_null_counts": {
+    "n_perms": 1000,
+    "min": 47,
+    "max": 47,
+    "n_unique_values": 1
+  },
+  "sae_training_config": {
+    "lr": 0.0003,
+    "batch": 4096,
+    "epochs": 3,
+    "d_sae": 6144,
+    "k": 32
+  },
+  "file_present::mesh_generalization_audit.json": true,
+  "file_present::causal_ablation.json": false,
+  "file_present::token_l0_distribution.json": false,
+  "file_present::monosemanticity_audit.json": false,
+  "file_present::sae_seed_stability.json": false
+}
