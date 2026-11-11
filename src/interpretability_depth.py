@@ -18,10 +18,12 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 from scipy.stats import rankdata
+import torch
 
 sys.path.insert(0, str(Path(__file__).parent))
 import config as C
 from data import build_index, load_medalcare
+from model import load_ecgfm, extract_layers
 from assoc import (
     MECHANISTIC_PARAMS, MORPHOLOGY_PARAMS, ALL_PARAMS,
     partial_spearman, bh_qvalues, rho_to_pval, compute_morphology
