@@ -1,33 +1,48 @@
 """
 interpretability_depth.py – Rigorous Mechanistic Interpretability Depth Checks for TMLR.
 
-Implements three critical analyses that elevate correlational interpretability to causal,
+Implements five critical analyses that elevate correlational interpretability to causal,
 clinically grounded machine learning:
   1. Monosemanticity Audit: Raw 768-D Neurons vs. 6,144-D SAE Atoms (quantifies superposition
      and polysemanticity reduction).
-  2. Causal Feature Ablation: Targeted vs. Off-Target Interventions (evaluates causal specificity
-     when zeroing/clamping condition-specific biophysical atoms).
+  1B. Token-Level Sparsity (L0) Distribution & Signal Energy Audit: Explains why frozen EMA
+     thresholds produce mean L0 < k on variable-amplitude ECG waveforms.
+  2. Causal Feature Ablation, Dose-Response & Rescue: Targeted vs. Off-Target Interventions
+     and restoration verification.
   3. Waveform Grounding & Temporal Localization: Identifies top-activating ECGs and projects
      token-level SAE atom activations back onto 12-lead ECG time series (P-wave, QRS, ST-T).
+  4. Mesh Generalization & Geometric Confounding Audit: Evaluates geometry-only baseline
+     (AUROC, Balanced Accuracy, Macro-F1, Confusion Matrix) and deduplicated multi-mesh atom union.
+  5. Multi-Seed SAE Feature Stability & Reproducibility Audit: Pairwise decoder cosine similarity
+     across all available seeds and specific retention of the 254 confirmed biophysical atoms.
 
 Run:
-    python src/interpretability_depth.py --layer 8 [--device cuda] [--all]
+    python src/interpretability_depth.py --layer 8 [--device cuda] [--all] [--force]
 """
-import sys, json, argparse
+import sys, json, argparse, traceback
 import numpy as np
 import pandas as pd
 from pathlib import Path
-from scipy.stats import rankdata
+from scipy.stats import rankdata, spearmanr
 import torch
 
 sys.path.insert(0, str(Path(__file__).parent))
 import config as C
 from data import build_index, load_medalcare
 from model import load_ecgfm, extract_layers
+from sae import BatchTopKSAE
 from assoc import (
     MECHANISTIC_PARAMS, MORPHOLOGY_PARAMS, ALL_PARAMS,
     partial_spearman, bh_qvalues, rho_to_pval, compute_morphology
 )
+
+
+def _preflight_self_check(layer: int = 8, device: str = "cpu") -> None:
+    """Fast preflight check verifying config constants, cache paths, and SAE instantiation."""
+    print(f"[Preflight Check] layer={layer}, device={device}, SAE_D_IN={C.SAE_D_IN}, SAE_D_SAE={C.SAE_D_SAE}, SAE_K={C.SAE_K}")
+    _ = BatchTopKSAE(d_in=C.SAE_D_IN, d_sae=C.SAE_D_SAE, k=C.SAE_K)
+    C.RUNS_DIR.mkdir(parents=True, exist_ok=True)
+    C.CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -40,19 +55,32 @@ def run_monosemanticity_audit(
     exclude_run_ids: list[str] | None = None,
     rho_thr: float = 0.20,
     q_thr: float = 0.05,
+    force: bool = False,
 ) -> dict:
     """
     Directly tests the central premise of Sparse Autoencoders: that raw foundation model
     neurons are polysemantic (entangled across multiple parameters due to superposition),
     whereas SAE atoms are monosemantic (selectively tuned to distinct parameters).
     """
-    import torch
-    from model import load_ecgfm, extract_layers
-    from sae import BatchTopKSAE
-
     print("\n" + "="*70)
     print("ANALYSIS 1: Monosemanticity Audit (Raw Neurons vs. SAE Atoms)")
     print("="*70)
+
+    out_path = C.RUNS_DIR / "monosemanticity_audit.json"
+    fig_path = C.RUNS_DIR / "monosemanticity_comparison.png"
+    if out_path.exists() and fig_path.exists() and not force:
+        try:
+            cached_res = json.loads(out_path.read_text(encoding="utf-8"))
+            print(f"  [Cached] Loaded existing Monosemanticity Audit from {out_path} (pass --force to recompute):")
+            print(f"  Raw Neurons: Monosemantic={100*cached_res['raw_monosemantic_fraction']:.1f}%, "
+                  f"Highly Polysemantic (>=3 params)={100*cached_res['raw_polysemantic_fraction_ge3']:.1f}%, "
+                  f"Mean load={cached_res['raw_mean_params_per_active_feature']:.2f} params/feature")
+            print(f"  SAE Atoms:   Monosemantic={100*cached_res['sae_monosemantic_fraction']:.1f}%, "
+                  f"Highly Polysemantic (>=3 params)={100*cached_res['sae_polysemantic_fraction_ge3']:.1f}%, "
+                  f"Mean load={cached_res['sae_mean_params_per_active_feature']:.2f} params/feature")
+            return cached_res
+        except Exception:
+            pass
 
     index = build_index()
     if exclude_run_ids:
@@ -70,7 +98,7 @@ def run_monosemanticity_audit(
     if morph_cache.exists():
         m_df = pd.read_parquet(morph_cache)
         for col in MORPHOLOGY_PARAMS:
-            if col in m_df.columns:
+            if col in m_df.columns and len(m_df) == len(index):
                 idx_held[col] = m_df.loc[held_mask, col].values
 
     # Covariate matrix: subfolder + model_id
@@ -79,30 +107,44 @@ def run_monosemanticity_audit(
     C_mat = np.concatenate([subfolder_dummies.values, model_dummies.values], axis=1)
 
     # ── 1. Load Raw Neuron Activations (Pooled Layer 8 features) ─────────────
-    print(f"Extracting Raw Layer {layer} Neuron Activations ({N_held} held-out ECGs)...")
-    model, _, _ = load_ecgfm(random_init=False)
-    model.to(device)
-    model.eval()
+    emb_candidates = [
+        C.CACHE_EMBEDDINGS / "pretrained_sensitivity_without_S64_S67" / f"layer{layer}.npy",
+        C.CACHE_EMBEDDINGS / "pretrained" / f"layer{layer}.npy",
+    ]
+    A_raw = None
+    for cand in emb_candidates:
+        if cand.exists():
+            arr = np.load(cand)
+            if len(arr) == len(index):
+                print(f"Loaded cached Layer {layer} raw embeddings from {cand} ({N_held} held-out ECGs)")
+                A_raw = arr[held_mask]
+                break
 
-    raw_neuron_acts = []
-    batch_size = 32
-    for start in range(0, N_held, batch_size):
-        batch = idx_held.iloc[start:start+batch_size]
-        win0, win1 = [], []
-        for _, row in batch.iterrows():
-            try:
-                w = load_medalcare(row["ecg_path"])
-            except Exception:
-                w = np.zeros((2, 12, C.WIN_SAMPLES), dtype=np.float32)
-            win0.append(w[0])
-            win1.append(w[1])
-        x0 = torch.from_numpy(np.stack(win0)).float()
-        x1 = torch.from_numpy(np.stack(win1)).float()
-        with torch.no_grad():
-            f0 = extract_layers(model, x0, layers=[layer], device=device)[layer].mean(dim=1).cpu().numpy()
-            f1 = extract_layers(model, x1, layers=[layer], device=device)[layer].mean(dim=1).cpu().numpy()
-        raw_neuron_acts.append((f0 + f1) / 2.0)
-    A_raw = np.concatenate(raw_neuron_acts, axis=0)  # (N_held, 768)
+    if A_raw is None:
+        print(f"Extracting Raw Layer {layer} Neuron Activations ({N_held} held-out ECGs)...")
+        model, _, _ = load_ecgfm(random_init=False)
+        model.to(device)
+        model.eval()
+
+        raw_neuron_acts = []
+        batch_size = 32
+        for start in range(0, N_held, batch_size):
+            batch = idx_held.iloc[start:start+batch_size]
+            win0, win1 = [], []
+            for _, row in batch.iterrows():
+                try:
+                    w = load_medalcare(row["ecg_path"])
+                except Exception:
+                    w = np.zeros((2, 12, C.WIN_SAMPLES), dtype=np.float32)
+                win0.append(w[0])
+                win1.append(w[1])
+            x0 = torch.from_numpy(np.stack(win0)).float()
+            x1 = torch.from_numpy(np.stack(win1)).float()
+            with torch.no_grad():
+                f0 = extract_layers(model, x0, layers=[layer], device=device)[layer].mean(dim=1).cpu().numpy()
+                f1 = extract_layers(model, x1, layers=[layer], device=device)[layer].mean(dim=1).cpu().numpy()
+            raw_neuron_acts.append((f0 + f1) / 2.0)
+        A_raw = np.concatenate(raw_neuron_acts, axis=0)  # (N_held, 768)
 
     # ── 2. Load SAE Atom Activations ─────────────────────────────────────────
     act_cache = C.CACHE_DIR / f"atom_acts_sensitivity_without_S64_S67_layer{layer}.npy"
@@ -167,8 +209,8 @@ def run_monosemanticity_audit(
     mean_params_per_sae = float(np.mean(active_sae)) if len(active_sae) else 0.0
 
     results = {
-        "raw_neurons_total": 768,
-        "sae_atoms_total": 6144,
+        "raw_neurons_total": int(C.SAE_D_IN),
+        "sae_atoms_total": int(C.SAE_D_SAE),
         "raw_active_features": int(len(active_raw)),
         "sae_active_features": int(len(active_sae)),
         "raw_mean_params_per_active_feature": mean_params_per_raw,
@@ -184,9 +226,8 @@ def run_monosemanticity_audit(
     print(f"  SAE Atoms:   Monosemantic={100*sae_monosemantic_frac:.1f}%, Highly Polysemantic (>=3 params)={100*sae_polysemantic_frac:.1f}%, Mean load={mean_params_per_sae:.2f} params/feature")
 
     # Plot comparative histogram
-    _plot_monosemanticity(raw_counts, sae_counts, C.RUNS_DIR / "monosemanticity_comparison.png")
+    _plot_monosemanticity(raw_counts, sae_counts, fig_path)
 
-    out_path = C.RUNS_DIR / "monosemanticity_audit.json"
     with open(out_path, "w") as f:
         json.dump(results, f, indent=2)
     print(f"Saved audit metrics to {out_path}")
@@ -228,8 +269,6 @@ def _plot_monosemanticity(raw_counts: np.ndarray, sae_counts: np.ndarray, out_pa
 
 def _load_sae_and_scale(layer: int = 8, device: str = "cpu"):
     """Finds and loads trained BatchTopK SAE weights and scale constant."""
-    from sae import BatchTopKSAE
-
     candidates = [
         C.CACHE_DIR / f"sae_pretrained_sensitivity_without_S64_S67_layer{layer}.pt",
         C.CACHE_DIR / f"sae_pretrained_layer{layer}.pt",
@@ -264,7 +303,7 @@ def _load_sae_and_scale(layer: int = 8, device: str = "cpu"):
                 pass
 
     loaded = torch.load(sae_path, map_location=device)
-    sae = BatchTopKSAE(d_in=C.D_MODEL, d_sae=6144, k=32).to(device)
+    sae = BatchTopKSAE(d_in=C.SAE_D_IN, d_sae=C.SAE_D_SAE, k=C.SAE_K).to(device)
     if isinstance(loaded, dict) and "model_state" in loaded:
         sae.load_state_dict(loaded["model_state"])
         scale = float(loaded.get("scale", scale))
@@ -285,9 +324,8 @@ def run_token_sparsity_audit(
     """
     Evaluates per-token L0 sparsity distribution and tests whether L0
     correlates with token-level 12-lead signal energy (RMS amplitude).
+    Batches forward passes (batch_size=32) for fast execution.
     """
-    from scipy.stats import spearmanr
-
     print("\n" + "="*70)
     print("ANALYSIS 1B: Token-Level L0 Sparsity Distribution & Signal Energy Audit")
     print("="*70)
@@ -308,7 +346,7 @@ def run_token_sparsity_audit(
     held_df = index[index["split"].isin(["validation", "test"])].reset_index(drop=True)
     rng = np.random.default_rng(42)
     sample_idx = rng.choice(len(held_df), size=min(n_sample_ecgs, len(held_df)), replace=False)
-    sample_df = held_df.iloc[sample_idx]
+    sample_df = held_df.iloc[sample_idx].reset_index(drop=True)
 
     model, _, _ = load_ecgfm(random_init=False)
     model.to(device)
@@ -316,50 +354,77 @@ def run_token_sparsity_audit(
 
     all_l0s = []
     all_energies = []
+    batch_size = 32
 
-    for _, row in sample_df.iterrows():
-        try:
-            w = load_medalcare(row["ecg_path"])  # (2, 12, 2500)
-        except Exception:
+    for start in range(0, len(sample_df), batch_size):
+        batch = sample_df.iloc[start:start + batch_size]
+        raw_sigs = []
+        for _, row in batch.iterrows():
+            try:
+                w = load_medalcare(row["ecg_path"])  # (2, 12, 2500)
+                raw_sigs.append(w[0])
+            except Exception:
+                continue
+        if not raw_sigs:
             continue
-        x = torch.from_numpy(w[0:1]).float()  # (1, 12, 2500)
-        with torch.no_grad():
-            feat = extract_layers(model, x, layers=[layer], device=device)[layer]  # (1, 156, 768)
-            T = feat.shape[1]
-            z = sae.encode(feat.reshape(-1, C.D_MODEL) / scale)  # (156, 6144)
-            l0_per_token = (z > 0).sum(dim=1).cpu().numpy()  # (156,)
-            all_l0s.append(l0_per_token)
 
-            # Patch signal energy across 12 leads (patch length = 2500 // 156 ~= 16)
-            patch_len = 2500 // T
-            raw_sig = w[0]  # (12, 2500)
-            token_rms = []
-            for t_i in range(T):
-                patch = raw_sig[:, t_i * patch_len : (t_i + 1) * patch_len]
-                rms = np.sqrt(np.mean(patch ** 2))
-                token_rms.append(rms)
-            all_energies.append(np.array(token_rms))
+        x = torch.from_numpy(np.stack(raw_sigs)).float()  # (B, 12, 2500)
+        with torch.no_grad():
+            feat = extract_layers(model, x, layers=[layer], device=device)[layer].to(device)  # (B, T, 768)
+            B_cur, T_cur, D_cur = feat.shape
+            z = sae.encode(feat.reshape(-1, D_cur) / scale)  # (B*T, 6144)
+            l0_batch = (z > 0).sum(dim=1).reshape(B_cur, T_cur).cpu().numpy()  # (B, T)
+            all_l0s.append(l0_batch.reshape(-1))
+
+            # Patch signal energy across 12 leads (patch length = 2500 // T_cur)
+            patch_len = C.WIN_SAMPLES // T_cur
+            sigs_np = np.stack(raw_sigs)[:, :, :T_cur * patch_len].reshape(B_cur, 12, T_cur, patch_len)
+            rms_batch = np.sqrt(np.mean(sigs_np ** 2, axis=(1, 3)))  # (B, T)
+            all_energies.append(rms_batch.reshape(-1))
 
     L0_arr = np.concatenate(all_l0s)
     Energy_arr = np.concatenate(all_energies)
 
-    rho_val, p_val = spearmanr(L0_arr, Energy_arr)
+    if float(np.std(L0_arr)) > 1e-8 and float(np.std(Energy_arr)) > 1e-8:
+        rho_val, p_val = spearmanr(L0_arr, Energy_arr)
+        boot_rhos = []
+        rng_b = np.random.default_rng(42)
+        n_tok = len(L0_arr)
+        for _ in range(200):
+            b_idx = rng_b.integers(0, n_tok, size=min(n_tok, 5000))
+            if float(np.std(L0_arr[b_idx])) > 1e-8 and float(np.std(Energy_arr[b_idx])) > 1e-8:
+                r_b, _ = spearmanr(L0_arr[b_idx], Energy_arr[b_idx])
+                if np.isfinite(r_b):
+                    boot_rhos.append(float(r_b))
+        rho_ci = [float(np.percentile(boot_rhos, 2.5)), float(np.percentile(boot_rhos, 97.5))] if boot_rhos else [float(rho_val), float(rho_val)]
+    else:
+        rho_val, p_val = 0.0, 1.0
+        rho_ci = [0.0, 0.0]
 
     l0_stats = {
+        "n_evaluated_tokens": int(len(L0_arr)),
+        "target_budget_k": int(C.SAE_K),
         "mean_l0": float(np.mean(L0_arr)),
         "std_l0": float(np.std(L0_arr)),
         "median_l0": float(np.median(L0_arr)),
         "p05_l0": float(np.percentile(L0_arr, 5)),
+        "p25_l0": float(np.percentile(L0_arr, 25)),
+        "p75_l0": float(np.percentile(L0_arr, 75)),
         "p95_l0": float(np.percentile(L0_arr, 95)),
+        "frac_l0_below_k": float(np.mean(L0_arr < C.SAE_K)),
+        "frac_l0_equal_zero": float(np.mean(L0_arr == 0)),
         "spearman_rho_energy_vs_l0": float(rho_val),
+        "spearman_rho_95ci": rho_ci,
         "spearman_pval_energy_vs_l0": float(p_val),
         "threshold_ema_value": float(sae.thr.item()),
     }
 
-    print(f"  Mean Token L0:   {l0_stats['mean_l0']:.2f} (std={l0_stats['std_l0']:.2f}, median={l0_stats['median_l0']:.1f})")
-    print(f"  5th-95th %ile:   [{l0_stats['p05_l0']:.1f}, {l0_stats['p95_l0']:.1f}]")
-    print(f"  EMA Threshold:   {l0_stats['threshold_ema_value']:.4f} (Frozen during inference)")
-    print(f"  Spearman rho (Signal Energy vs. L0): {rho_val:+.4f} (p = {p_val:.2e})")
+    print(f"  Evaluated Tokens:  {l0_stats['n_evaluated_tokens']} ({len(sample_df)} ECGs)")
+    print(f"  Mean Token L0:     {l0_stats['mean_l0']:.2f} (std={l0_stats['std_l0']:.2f}, median={l0_stats['median_l0']:.1f})")
+    print(f"  IQR / 5th-95th:    IQR=[{l0_stats['p25_l0']:.1f}, {l0_stats['p75_l0']:.1f}], 5th-95th=[{l0_stats['p05_l0']:.1f}, {l0_stats['p95_l0']:.1f}]")
+    print(f"  Fraction L0 < 32:  {100*l0_stats['frac_l0_below_k']:.1f}% | Fraction L0 == 0: {100*l0_stats['frac_l0_equal_zero']:.2f}%")
+    print(f"  EMA Threshold:     {l0_stats['threshold_ema_value']:.4f} (Frozen during inference)")
+    print(f"  Spearman rho (Signal Energy vs. L0): {rho_val:+.4f} (95% CI: [{rho_ci[0]:+.4f}, {rho_ci[1]:+.4f}], p = {p_val:.2e})")
 
     _plot_token_l0_distribution(L0_arr, Energy_arr, C.RUNS_DIR / "token_l0_distribution.png")
 
@@ -378,9 +443,12 @@ def _plot_token_l0_distribution(l0_arr: np.ndarray, energy_arr: np.ndarray, out_
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4.2))
 
         # Panel A: L0 Histogram
-        ax1.hist(l0_arr, bins=np.arange(15, 45) - 0.5, density=True, color="#4c72b0", edgecolor="black", alpha=0.7)
+        lo_bin = max(0, int(np.percentile(l0_arr, 1)) - 2)
+        hi_bin = max(lo_bin + 15, int(np.percentile(l0_arr, 99)) + 3)
+        bins_hist = np.linspace(lo_bin - 0.5, hi_bin + 0.5, min(40, hi_bin - lo_bin + 2))
+        ax1.hist(l0_arr, bins=bins_hist, density=True, color="#4c72b0", edgecolor="black", alpha=0.7)
         ax1.axvline(np.mean(l0_arr), color="#d95f02", linestyle="--", linewidth=1.8, label=f"Mean L0 = {np.mean(l0_arr):.2f}")
-        ax1.axvline(32, color="gray", linestyle=":", linewidth=1.5, label="Budget k = 32")
+        ax1.axvline(C.SAE_K, color="gray", linestyle=":", linewidth=1.5, label=f"Budget k = {C.SAE_K}")
         ax1.set_xlabel("Per-Token L0 Sparsity (Active Atoms)")
         ax1.set_ylabel("Probability Density")
         ax1.set_title("A: Token-Level L0 Sparsity Distribution")
@@ -427,6 +495,9 @@ def run_causal_ablation(
       5. Rescue / Restoration: confirming full recovery upon restoring atom activations.
     """
     from sklearn.metrics import roc_auc_score
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.multiclass import OneVsRestClassifier
+    from sklearn.preprocessing import StandardScaler
 
     print("\n" + "="*70)
     print("ANALYSIS 2: Causal Feature Ablation, Dose-Response & Rescue")
@@ -464,11 +535,6 @@ def run_causal_ablation(
         top_k = np.argsort(-corrs)[:max(32, k_ablate)]
         condition_atoms[c_name] = top_k.tolist()
 
-    # Fit sparse-logistic probe on train
-    from sklearn.linear_model import LogisticRegression
-    from sklearn.multiclass import OneVsRestClassifier
-    from sklearn.preprocessing import StandardScaler
-
     sc = StandardScaler().fit(Z_tr)
     clf = OneVsRestClassifier(LogisticRegression(C=1.0, max_iter=1000))
     clf.fit(sc.transform(Z_tr), y_tr)
@@ -505,7 +571,6 @@ def run_causal_ablation(
         "cluster_bootstrap_95ci": [ci_lower, ci_upper],
         "per_condition": {},
         "dose_response": {},
-        "rescue_verification": {},
     }
     rng = np.random.default_rng(42)
     active_atoms = np.where(Z_tr.mean(axis=0) > 0.05)[0]
@@ -520,14 +585,17 @@ def run_causal_ablation(
         for i, g in enumerate(C.GROUP_LABELS):
             ablated_aucs[g] = float(roc_auc_score((y_te == i).astype(int), P_ablated[:, i]))
 
-        # Random ablation control matched for number of active atoms
-        rand_atoms = rng.choice(active_atoms, size=k_ablate, replace=False)
-        Z_te_rand = Z_te.copy()
-        Z_te_rand[:, rand_atoms] = 0.0
-        P_rand = clf.predict_proba(sc.transform(Z_te_rand))
-        rand_aucs = {}
-        for i, g in enumerate(C.GROUP_LABELS):
-            rand_aucs[g] = float(roc_auc_score((y_te == i).astype(int), P_rand[:, i]))
+        # Random ablation control matched for number of active atoms (averaged over 10 draws)
+        rand_target_drops = []
+        for _ in range(10):
+            rand_atoms = rng.choice(active_atoms, size=k_ablate, replace=False)
+            Z_te_rand = Z_te.copy()
+            Z_te_rand[:, rand_atoms] = 0.0
+            P_rand = clf.predict_proba(sc.transform(Z_te_rand))
+            t_idx = C.GROUP_TO_INT[target_group]
+            r_auc = float(roc_auc_score((y_te == t_idx).astype(int), P_rand[:, t_idx]))
+            rand_target_drops.append(base_aucs[target_group] - r_auc)
+        rand_target_drop = float(np.mean(rand_target_drops))
 
         # Rescue / Restoration verification
         Z_te_rescued = Z_te_ablated.copy()
@@ -543,7 +611,6 @@ def run_causal_ablation(
             base_aucs[g] - ablated_aucs[g] for g in C.GROUP_LABELS if g != target_group
         ]
         mean_off_target_drop = float(np.mean(off_target_drops))
-        rand_target_drop = base_aucs[target_group] - rand_aucs[target_group]
 
         ablation_results["per_condition"][target_group] = {
             "baseline_auc": base_aucs[target_group],
@@ -558,9 +625,10 @@ def run_causal_ablation(
     # Dose-response evaluation across k in [1, 2, 4, 8, 16, 32]
     print("\nRunning Dose-Response Analysis (k in [1, 2, 4, 8, 16, 32])...")
     dose_k_list = [1, 2, 4, 8, 16, 32]
-    dose_results = {k: {} for k in dose_k_list}
+    dose_results = {}
     for k_val in dose_k_list:
         mean_drops = []
+        off_drops = []
         for target_group in C.GROUP_LABELS:
             ablated_atoms = condition_atoms[target_group][:k_val]
             Z_te_sub = Z_te.copy()
@@ -570,7 +638,14 @@ def run_causal_ablation(
             sub_auc = float(roc_auc_score((y_te == t_idx).astype(int), P_sub[:, t_idx]))
             drop = base_aucs[target_group] - sub_auc
             mean_drops.append(drop)
-        dose_results[k_val] = float(np.mean(mean_drops))
+            for o_idx, o_group in enumerate(C.GROUP_LABELS):
+                if o_group != target_group:
+                    o_auc = float(roc_auc_score((y_te == o_idx).astype(int), P_sub[:, o_idx]))
+                    off_drops.append(base_aucs[o_group] - o_auc)
+        dose_results[int(k_val)] = {
+            "mean_targeted_drop": float(np.mean(mean_drops)),
+            "mean_off_target_drop": float(np.mean(off_drops)),
+        }
     ablation_results["dose_response"] = dose_results
 
     print("\nCausal Ablation & Rescue Summary (Ablating Top-15 Condition Atoms):")
@@ -578,9 +653,9 @@ def run_causal_ablation(
     for g, metrics in ablation_results["per_condition"].items():
         print(f"  {g:10s}: Targeted Drop={metrics['target_auc_drop']:+.4f} | Rescued={metrics['rescued_auc']:.4f} | Random Control Drop={metrics['random_control_drop']:+.4f} | Off-Target={metrics['mean_off_target_drop']:+.4f} | Specificity={metrics['causal_specificity_ratio']:.1f}x")
 
-    print("\nDose-Response (Mean Targeted AUROC Drop):")
-    for k_val, drop in dose_results.items():
-        print(f"  k={k_val:2d} ablated atoms -> Mean AUROC Drop = {drop:+.4f}")
+    print("\nDose-Response (Mean Targeted vs Off-Target AUROC Drop):")
+    for k_val, d_info in dose_results.items():
+        print(f"  k={k_val:2d} ablated atoms -> Targeted Drop = {d_info['mean_targeted_drop']:+.4f} | Off-Target Drop = {d_info['mean_off_target_drop']:+.4f}")
 
     _plot_causal_ablation(ablation_results["per_condition"], dose_results, C.RUNS_DIR / "causal_ablation_effect.png")
 
@@ -620,12 +695,21 @@ def _plot_causal_ablation(results: dict, dose_results: dict, out_path: Path):
 
         # Panel B: Dose-Response Curve
         k_vals = sorted(dose_results.keys())
-        drops = [dose_results[k] for k in k_vals]
-        ax2.plot(k_vals, drops, marker="o", color="#d95f02", linewidth=2.0, markersize=6)
+        t_drops = [
+            dose_results[k]["mean_targeted_drop"] if isinstance(dose_results[k], dict) else dose_results[k]
+            for k in k_vals
+        ]
+        o_drops = [
+            dose_results[k]["mean_off_target_drop"] if isinstance(dose_results[k], dict) else 0.0
+            for k in k_vals
+        ]
+        ax2.plot(k_vals, t_drops, marker="o", color="#d95f02", linewidth=2.0, markersize=6, label="Targeted Drop")
+        ax2.plot(k_vals, o_drops, marker="s", color="#66a61e", linewidth=1.8, linestyle="--", markersize=5, label="Off-Target Drop")
         ax2.set_xlabel("Number of Condition-Specific Atoms Ablated (k)")
-        ax2.set_ylabel("Mean Targeted AUROC Drop")
+        ax2.set_ylabel("Mean AUROC Drop")
         ax2.set_title("B: Causal Dose-Response")
         ax2.set_xticks(k_vals)
+        ax2.legend(frameon=True, fontsize=9)
         ax2.grid(True, linestyle="--", alpha=0.5)
 
         fig.tight_layout()
@@ -644,16 +728,14 @@ def run_waveform_grounding(
     layer: int = 8,
     device: str = "cpu",
     exclude_run_ids: list[str] | None = None,
-) -> None:
+) -> dict:
     """
     Extracts the highest-activating 12-lead ECGs for top biophysical atoms and
     visualizes their temporal activation profile across the 5s cardiac cycle.
+    Uses cached atom_acts matrix for instant top-ECG lookup (requiring only 4 forward passes).
     """
-    import torch
     import matplotlib; matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    from model import load_ecgfm, extract_layers
-    from sae import BatchTopKSAE
 
     print("\n" + "="*70)
     print("ANALYSIS 3: Waveform Grounding & Temporal Localization")
@@ -663,13 +745,14 @@ def run_waveform_grounding(
     if exclude_run_ids:
         index = index.loc[~index["run_id"].isin(exclude_run_ids)].reset_index(drop=True)
 
-    test_idx = index[index["split"] == "test"].reset_index(drop=True)
+    te_mask = (index["split"] == "test").to_numpy()
+    test_idx = index[te_mask].reset_index(drop=True)
 
     # Load trained SAE and model
     sae, scale, sae_path = _load_sae_and_scale(layer, device)
     if sae is None:
         print(f"  [WARN] SAE weights not found in cache. Skipping waveform grounding.")
-        return {}
+        return {"status": "skipped_missing_sae"}
     print(f"  Loaded SAE from {sae_path} (scale={scale:.4f})")
 
     model, _, _ = load_ecgfm(random_init=False)
@@ -690,18 +773,34 @@ def run_waveform_grounding(
 
     print(f"Profiling temporal waveforms for top atoms: {top_atoms}")
 
-    fig, axes = plt.subplots(len(top_atoms), 2, figsize=(13, 2.6 * len(top_atoms)))
-    fs = float(C.SAMPLE_RATE)
+    # Check if pooled atom activations are already cached for fast exemplar lookup
+    act_cache = C.CACHE_DIR / f"atom_acts_sensitivity_without_S64_S67_layer{layer}.npy"
+    if not act_cache.exists():
+        act_cache = C.CACHE_DIR / f"atom_acts_layer{layer}.npy"
+    A_te = None
+    if act_cache.exists():
+        arr = np.load(act_cache)
+        if len(arr) == len(index):
+            A_te = arr[te_mask]
+
+    fig, axes = plt.subplots(len(top_atoms), 2, figsize=(13, 2.6 * len(top_atoms)), squeeze=False)
     time_sec = np.linspace(0, 5.0, C.WIN_SAMPLES)
+    grounding_summary = {}
 
     for row_idx, (atom_id, param_name) in enumerate(top_atoms):
         best_act = -1.0
         best_ecg = None
         best_tok_acts = None
+        best_run_id = None
 
-        # Sample 100 test ECGs to find high-activation exemplar
-        sample = test_idx.sample(min(120, len(test_idx)), random_state=42)
-        for _, row in sample.iterrows():
+        if A_te is not None:
+            # Instant lookup across all test ECGs using cached atom activations
+            top_candidates = np.argsort(-A_te[:, atom_id])[:5]
+            candidate_rows = test_idx.iloc[top_candidates]
+        else:
+            candidate_rows = test_idx.sample(min(32, len(test_idx)), random_state=42)
+
+        for _, row in candidate_rows.iterrows():
             try:
                 w = load_medalcare(row["ecg_path"])[0]  # (12, 2500)
             except Exception:
@@ -716,6 +815,7 @@ def run_waveform_grounding(
                 best_act = max_val
                 best_ecg = w
                 best_tok_acts = z_atom
+                best_run_id = str(row.get("run_id", ""))
 
         if best_ecg is None:
             continue
@@ -724,6 +824,14 @@ def run_waveform_grounding(
         tok_time = np.linspace(0, 5.0, len(best_tok_acts))
         smooth_act = np.interp(time_sec, tok_time, best_tok_acts)
         norm_act = smooth_act / max(float(np.max(smooth_act)), 1e-6)
+
+        grounding_summary[f"atom_{atom_id}"] = {
+            "atom": int(atom_id),
+            "param": param_name,
+            "exemplar_run_id": best_run_id,
+            "peak_token_activation": float(best_act),
+            "active_token_fraction": float((best_tok_acts > 0).mean()),
+        }
 
         # Plot Lead II
         ax_lead = axes[row_idx, 0]
@@ -759,6 +867,7 @@ def run_waveform_grounding(
     fig.savefig(out_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
     print(f"Saved waveform grounding figure to {out_path}")
+    return grounding_summary
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -770,12 +879,13 @@ def run_mesh_generalization_audit(
 ) -> dict:
     """
     Audits anatomical mesh generalization and tests for geometric confounding:
-      1. Evaluates Geometry-Only baseline probe predicting diagnosis from heart/torso orientation.
+      1. Evaluates Geometry-Only baseline probe predicting diagnosis from heart/torso orientation
+         (reporting Test Macro AUROC, Balanced Accuracy, Raw Accuracy, Macro-F1, and Confusion Matrix).
       2. Measures parameter-level mesh diversity across the 118 independent meshes.
-      3. Audits per-mesh test set distribution.
+      3. Computes exact deduplicated union of multi-mesh confirmed atoms vs ischemia-specific atoms.
     """
     from sklearn.linear_model import LogisticRegression
-    from sklearn.metrics import roc_auc_score, accuracy_score
+    from sklearn.metrics import roc_auc_score, accuracy_score, balanced_accuracy_score, f1_score, confusion_matrix
     from sklearn.preprocessing import StandardScaler
 
     print("\n" + "="*70)
@@ -798,9 +908,9 @@ def run_mesh_generalization_audit(
     te_mask = (index['split'] == 'test').values
 
     X_tr = df_num.loc[tr_mask].values
-    y_tr = index.loc[tr_mask, 'group'].astype('category').cat.codes.values
+    y_tr = index.loc[tr_mask, 'group'].map(C.GROUP_TO_INT).values
     X_te = df_num.loc[te_mask].values
-    y_te = index.loc[te_mask, 'group'].astype('category').cat.codes.values
+    y_te = index.loc[te_mask, 'group'].map(C.GROUP_TO_INT).values
 
     sc = StandardScaler().fit(X_tr)
     clf = LogisticRegression(max_iter=1000)
@@ -810,10 +920,15 @@ def run_mesh_generalization_audit(
 
     geom_auc = float(roc_auc_score(y_te, P_te, multi_class='ovr', average='macro'))
     geom_acc = float(accuracy_score(y_te, y_pred))
+    geom_bal_acc = float(balanced_accuracy_score(y_te, y_pred))
+    geom_macro_f1 = float(f1_score(y_te, y_pred, average='macro', zero_division=0))
+    geom_cm = confusion_matrix(y_te, y_pred).tolist()
 
-    print("1. Geometric Confounding Baseline (Heart/Torso Rotation & Geometry Alone):")
-    print(f"   Test Accuracy: {geom_acc*100:.2f}% (Chance = 12.50%)")
-    print(f"   Test Macro AUROC: {geom_auc:.4f} (Near-Random Guessing vs. ECG-FM 0.9925)")
+    print("1. Geometric Confounding Baseline (Heart/Torso Rotation & Conductivities Alone):")
+    print(f"   Test Macro AUROC:       {geom_auc:.4f} (Near-Random Guessing vs. ECG-FM 0.9925)")
+    print(f"   Test Balanced Accuracy: {geom_bal_acc*100:.2f}% (Exact 1/8 Random Chance = 12.50%)")
+    print(f"   Test Macro-F1:          {geom_macro_f1:.4f}")
+    print(f"   Test Raw Accuracy:      {geom_acc*100:.2f}% (Majority-class MI baseline = 43.29%)")
 
     # 2. Parameter-level mesh diversity
     key_params = [
@@ -836,15 +951,52 @@ def run_mesh_generalization_audit(
                 "val_meshes": va_mesh,
                 "test_meshes": te_mesh,
             }
-            print(f"   {p:18s}: {len(valid_df):5d} ECGs across {n_mesh:2d} meshes (train={tr_mesh:2d}, val={va_mesh:2d}, test={te_mesh:2d})")
+            print(f"   {p:18s}: {len(valid_df):5d} ECGs across {n_mesh:3d} meshes (train={tr_mesh:2d}, val={va_mesh:2d}, test={te_mesh:2d})")
+
+    # 3. Exact deduplicated atom union audit on Test C confirmed atoms
+    dedup_summary = {}
+    c_csv = C.RUNS_DIR / "C_confirmed_atoms_sensitivity_without_S64_S67.csv"
+    if c_csv.exists():
+        c_df = pd.read_csv(c_csv)
+        all_unique = set(c_df["atom"].unique())
+        apd_atoms = set(c_df[c_df["param"].str.startswith("v_APD")]["atom"].unique())
+        purk_atoms = set(c_df[c_df["param"].str.startswith("v_stim")]["atom"].unique())
+        morph_atoms = set(c_df[c_df["param"].str.startswith("morph_")]["atom"].unique())
+        isch_atoms = set(c_df[c_df["param"].str.startswith("v_isch")]["atom"].unique())
+        multi_mesh_union = apd_atoms | purk_atoms | morph_atoms
+        isch_only = all_unique - multi_mesh_union
+        dedup_summary = {
+            "total_confirmed_pairs": int(len(c_df)),
+            "total_unique_confirmed_atoms": int(len(all_unique)),
+            "apd_unique_atoms": int(len(apd_atoms)),
+            "purkinje_unique_atoms": int(len(purk_atoms)),
+            "morphology_unique_atoms": int(len(morph_atoms)),
+            "ischemia_unique_atoms": int(len(isch_atoms)),
+            "multi_mesh_union_unique_atoms": int(len(multi_mesh_union)),
+            "multi_mesh_union_fraction": float(len(multi_mesh_union) / max(len(all_unique), 1)),
+            "ischemia_only_unique_atoms": int(len(isch_only)),
+        }
+        print(f"\n3. Deduplicated Confirmed Atom Union:")
+        print(f"   Total Unique Confirmed Atoms: {len(all_unique)} ({len(c_df)} pairs)")
+        print(f"   |A_APD|={len(apd_atoms)}, |A_Purkinje|={len(purk_atoms)}, |A_Morph|={len(morph_atoms)}")
+        print(f"   Deduplicated Multi-Mesh Union (107-118 meshes): {len(multi_mesh_union)} / {len(all_unique)} ({100*dedup_summary['multi_mesh_union_fraction']:.1f}%)")
+        print(f"   Purely Ischemia-Specific Atoms (11 MI meshes):  {len(isch_only)} / {len(all_unique)} ({100*len(isch_only)/max(len(all_unique),1):.1f}%)")
 
     audit_results = {
         "geometric_baseline_probe": {
             "test_macro_auc": geom_auc,
-            "test_accuracy": geom_acc,
-            "interpretation": "Geometry and heart rotation alone yield AUROC 0.5427 (near-random guessing), demonstrating that the ECG-FM representation does not exploit geometric orientation confounding.",
+            "test_balanced_accuracy": geom_bal_acc,
+            "test_macro_f1": geom_macro_f1,
+            "test_raw_accuracy": geom_acc,
+            "confusion_matrix": geom_cm,
+            "interpretation": (
+                "The five available geometric and conductivity parameters alone yield Test Macro AUROC 0.5427 "
+                "and Balanced Accuracy 12.50% (collapsing to majority-class MI predictions), providing a negative "
+                "control showing these parameters do not linearly separate the 8 classes on their own."
+            ),
         },
         "parameter_mesh_diversity": param_mesh_counts,
+        "deduplicated_atom_union": dedup_summary,
         "mesh_disjointness_note": "In Test C, model_id was explicitly included as a fixed-effect nuisance covariate, guaranteeing that confirmed biophysical atoms are orthogonal to anatomical mesh identity.",
     }
 
@@ -868,9 +1020,9 @@ def run_sae_stability_audit(
     """
     Evaluates cross-seed stability of SAE dictionary features:
       1. Loads independently trained SAE checkpoints across seeds.
-      2. Computes pairwise cosine similarity between decoder feature directions.
+      2. Computes pairwise cosine similarity between decoder feature directions across all seed pairs.
       3. Measures feature retention (% matched at cos >= 0.70 and 0.80).
-      4. Audits stability of top confirmed biophysical atoms.
+      4. Specifically audits cross-seed stability of the 254 confirmed biophysical atoms.
     """
     print("\n" + "="*70)
     print("ANALYSIS 5: Multi-Seed SAE Feature Stability & Reproducibility Audit")
@@ -897,40 +1049,76 @@ def run_sae_stability_audit(
                 break
 
     if len(ckpts) < 2:
-        print(f"  [INFO] Found {len(ckpts)} SAE checkpoint(s) ({list(ckpts.keys())}).")
+        print(f"  [INFO] Found {len(ckpts)} SAE checkpoint(s) (seeds: {list(ckpts.keys())}).")
         print("  To run full 3-seed stability analysis, train seeds 1 and 2 via:")
-        print(f"    python src/sae.py --layer {layer} --device {device} --seed 1 --exclude-run-ids run_S64 run_S67")
-        print(f"    python src/sae.py --layer {layer} --device {device} --seed 2 --exclude-run-ids run_S64 run_S67")
+        print("    !bash scripts/colab_run.sh sae-multi-seed")
         return {"status": "pending_seeds", "available_seeds": list(ckpts.keys())}
 
-    # Extract decoder directions
+    # Extract normalized decoder directions (6144, 768)
     decoders = {}
     for s, state in ckpts.items():
-        w_dec = state["W_dec"].float()  # (6144, 768)
+        w_dec = state["W_dec"].float()
         w_dec = w_dec / w_dec.norm(dim=1, keepdim=True).clamp(min=1e-8)
         decoders[s] = w_dec
 
-    s0, s1 = sorted(decoders.keys())[:2]
-    print(f"Comparing Seed {s0} vs Seed {s1} ({decoders[s0].shape[0]} atoms each)...")
-    sim_matrix = (decoders[s0] @ decoders[s1].T).abs().numpy()  # (6144, 6144)
-    max_sims = sim_matrix.max(axis=1)
+    # Load confirmed atom IDs from Test C (Seed 0)
+    confirmed_atom_ids = []
+    c_csv = C.RUNS_DIR / "C_confirmed_atoms_sensitivity_without_S64_S67.csv"
+    if c_csv.exists():
+        c_df = pd.read_csv(c_csv)
+        confirmed_atom_ids = sorted(c_df["atom"].unique().tolist())
 
-    matched_70 = float((max_sims >= 0.70).mean())
-    matched_80 = float((max_sims >= 0.80).mean())
-    mean_sim = float(np.mean(max_sims))
-    median_sim = float(np.median(max_sims))
+    avail_seeds = sorted(decoders.keys())
+    pairwise_results = {}
+    all_pair_means = []
+    all_pair_medians = []
+    all_pair_70 = []
+    all_pair_80 = []
 
-    print(f"  Mean Max Cosine Similarity:   {mean_sim:.4f}")
-    print(f"  Median Max Cosine Similarity: {median_sim:.4f}")
-    print(f"  Features Matched (cos >= 0.70): {matched_70*100:.1f}%")
-    print(f"  Features Matched (cos >= 0.80): {matched_80*100:.1f}%")
+    for i in range(len(avail_seeds)):
+        for j in range(i + 1, len(avail_seeds)):
+            sa, sb = avail_seeds[i], avail_seeds[j]
+            sim_matrix = (decoders[sa] @ decoders[sb].T).abs().numpy()  # (6144, 6144)
+            max_sims = sim_matrix.max(axis=1)
+
+            m_70 = float((max_sims >= 0.70).mean())
+            m_80 = float((max_sims >= 0.80).mean())
+            mean_s = float(np.mean(max_sims))
+            med_s = float(np.median(max_sims))
+
+            pair_key = f"seed{sa}_vs_seed{sb}"
+            pair_info = {
+                "mean_max_cosine": mean_s,
+                "median_max_cosine": med_s,
+                "matched_pct_70": m_70 * 100,
+                "matched_pct_80": m_80 * 100,
+            }
+
+            if sa == 0 and confirmed_atom_ids:
+                conf_sims = max_sims[confirmed_atom_ids]
+                pair_info["confirmed_254_mean_cosine"] = float(np.mean(conf_sims))
+                pair_info["confirmed_254_median_cosine"] = float(np.median(conf_sims))
+                pair_info["confirmed_254_matched_pct_70"] = float((conf_sims >= 0.70).mean() * 100)
+                pair_info["confirmed_254_matched_pct_80"] = float((conf_sims >= 0.80).mean() * 100)
+
+            pairwise_results[pair_key] = pair_info
+            all_pair_means.append(mean_s)
+            all_pair_medians.append(med_s)
+            all_pair_70.append(m_70 * 100)
+            all_pair_80.append(m_80 * 100)
+
+            print(f"  Pair {pair_key}: Mean Cos={mean_s:.4f}, Median={med_s:.4f}, >=0.70: {m_70*100:.1f}%, >=0.80: {m_80*100:.1f}%")
+            if "confirmed_254_mean_cosine" in pair_info:
+                print(f"    -> Confirmed 254 Biophysical Atoms: Mean Cos={pair_info['confirmed_254_mean_cosine']:.4f}, "
+                      f">=0.70: {pair_info['confirmed_254_matched_pct_70']:.1f}%, >=0.80: {pair_info['confirmed_254_matched_pct_80']:.1f}%")
 
     stability_results = {
-        "compared_seeds": [s0, s1],
-        "mean_max_cosine": mean_sim,
-        "median_max_cosine": median_sim,
-        "matched_pct_70": matched_70 * 100,
-        "matched_pct_80": matched_80 * 100,
+        "available_seeds": avail_seeds,
+        "mean_max_cosine": float(np.mean(all_pair_means)),
+        "median_max_cosine": float(np.mean(all_pair_medians)),
+        "matched_pct_70": float(np.mean(all_pair_70)),
+        "matched_pct_80": float(np.mean(all_pair_80)),
+        "pairwise": pairwise_results,
     }
 
     out_json = C.RUNS_DIR / "sae_seed_stability.json"
@@ -941,12 +1129,11 @@ def run_sae_stability_audit(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# CLI Runner
+# CLI Runner with Fault Isolation
 # ─────────────────────────────────────────────────────────────────────────────
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    import torch
     default_dev = "cuda" if torch.cuda.is_available() else "cpu"
     ap.add_argument("--layer", type=int, default=C.LOCKED_LAYER or 8)
     ap.add_argument("--device", default=default_dev)
@@ -958,7 +1145,10 @@ def main():
     ap.add_argument("--run-mesh-audit", action="store_true")
     ap.add_argument("--run-sae-stability", action="store_true")
     ap.add_argument("--all", action="store_true")
+    ap.add_argument("--force", action="store_true", help="Force recomputation even if cached output exists")
     args = ap.parse_args()
+
+    _preflight_self_check(layer=args.layer, device=args.device)
 
     run_all = args.all or not (
         args.run_monosemanticity or args.run_token_sparsity or
@@ -966,18 +1156,47 @@ def main():
         args.run_mesh_audit or args.run_sae_stability
     )
 
+    tasks = []
     if run_all or args.run_monosemanticity:
-        run_monosemanticity_audit(layer=args.layer, device=args.device, exclude_run_ids=args.exclude_run_ids)
+        tasks.append(("Analysis 1 (Monosemanticity Audit)", lambda: run_monosemanticity_audit(
+            layer=args.layer, device=args.device, exclude_run_ids=args.exclude_run_ids, force=args.force
+        )))
     if run_all or args.run_token_sparsity:
-        run_token_sparsity_audit(layer=args.layer, device=args.device, exclude_run_ids=args.exclude_run_ids)
+        tasks.append(("Analysis 1B (Token L0 & Signal Energy Audit)", lambda: run_token_sparsity_audit(
+            layer=args.layer, device=args.device, exclude_run_ids=args.exclude_run_ids
+        )))
     if run_all or args.run_causal_ablation:
-        run_causal_ablation(layer=args.layer, exclude_run_ids=args.exclude_run_ids)
+        tasks.append(("Analysis 2 (Causal Ablation, Dose-Response & Rescue)", lambda: run_causal_ablation(
+            layer=args.layer, exclude_run_ids=args.exclude_run_ids
+        )))
     if run_all or args.run_waveform_visualization:
-        run_waveform_grounding(layer=args.layer, device=args.device, exclude_run_ids=args.exclude_run_ids)
+        tasks.append(("Analysis 3 (Waveform Grounding)", lambda: run_waveform_grounding(
+            layer=args.layer, device=args.device, exclude_run_ids=args.exclude_run_ids
+        )))
     if run_all or args.run_mesh_audit:
-        run_mesh_generalization_audit(exclude_run_ids=args.exclude_run_ids)
+        tasks.append(("Analysis 4 (Mesh Generalization Audit)", lambda: run_mesh_generalization_audit(
+            exclude_run_ids=args.exclude_run_ids
+        )))
     if run_all or args.run_sae_stability:
-        run_sae_stability_audit(layer=args.layer, device=args.device, exclude_run_ids=args.exclude_run_ids)
+        tasks.append(("Analysis 5 (Multi-Seed SAE Stability Audit)", lambda: run_sae_stability_audit(
+            layer=args.layer, device=args.device, exclude_run_ids=args.exclude_run_ids
+        )))
+
+    summary_status = {}
+    for name, fn in tasks:
+        try:
+            fn()
+            summary_status[name] = "SUCCESS"
+        except Exception as e:
+            summary_status[name] = f"FAILED ({type(e).__name__}: {e})"
+            print(f"\n[ERROR] {name} encountered an error:")
+            traceback.print_exc()
+
+    print("\n" + "="*70)
+    print("INTERPRETABILITY DEPTH CHECKS SUMMARY")
+    print("="*70)
+    for name, st in summary_status.items():
+        print(f"  {name:52s}: {st}")
 
 
 if __name__ == "__main__":

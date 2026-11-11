@@ -1,8 +1,92 @@
 {
   "geometric_baseline_probe": {
     "test_macro_auc": 0.5426859320100752,
-    "test_accuracy": 0.4329004329004329,
-    "interpretation": "Geometry and heart rotation alone yield AUROC 0.5427 (near-random guessing), demonstrating that the ECG-FM representation does not exploit geometric orientation confounding."
+    "test_balanced_accuracy": 0.125,
+    "test_macro_f1": 0.0755287009063444,
+    "test_raw_accuracy": 0.4329004329004329,
+    "confusion_matrix": [
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        100,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        130,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        126,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        130,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        100,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        600,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        100,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        100,
+        0,
+        0
+      ]
+    ],
+    "interpretation": "The five available geometric and conductivity parameters alone yield Test Macro AUROC 0.5427 and Balanced Accuracy 12.50% (collapsing to majority-class MI predictions), providing a negative control showing these parameters do not linearly separate the 8 classes on their own."
   },
   "parameter_mesh_diversity": {
     "v_APD.min": {
@@ -61,6 +145,17 @@
       "val_meshes": 1,
       "test_meshes": 1
     }
+  },
+  "deduplicated_atom_union": {
+    "total_confirmed_pairs": 325,
+    "total_unique_confirmed_atoms": 254,
+    "apd_unique_atoms": 120,
+    "purkinje_unique_atoms": 58,
+    "morphology_unique_atoms": 37,
+    "ischemia_unique_atoms": 74,
+    "multi_mesh_union_unique_atoms": 188,
+    "multi_mesh_union_fraction": 0.7401574803149606,
+    "ischemia_only_unique_atoms": 66
   },
   "mesh_disjointness_note": "In Test C, model_id was explicitly included as a fixed-effect nuisance covariate, guaranteeing that confirmed biophysical atoms are orthogonal to anatomical mesh identity."
 }

@@ -531,40 +531,22 @@ def compute_probe_drop(
     s_va = slice(n_tr, n_tr + n_va)
     s_te = slice(n_tr + n_va, None)
 
-    y_tr_full, g_tr_full = labels[tr_idx], groups[tr_idx]
+    y_tr, g_tr = labels[tr_idx], groups[tr_idx]
     y_va = labels[va_idx]
     y_te = labels[te_idx]
 
-    # Standardize with Test A: use stratified balanced subsample (max 3000, seed 42)
-    max_train = 3000
-    if n_tr > max_train:
-        rng = np.random.default_rng(42)
-        chosen = []
-        for g_int in range(len(C.GROUP_LABELS)):
-            g_idx = np.where(y_tr_full == g_int)[0]
-            n_each = max_train // len(C.GROUP_LABELS)
-            if len(g_idx) > n_each:
-                g_idx = rng.choice(g_idx, n_each, replace=False)
-            chosen.append(g_idx)
-        tr_sub = np.concatenate(chosen)
-    else:
-        tr_sub = np.arange(n_tr)
-
-    y_tr = y_tr_full[tr_sub]
-    g_tr = g_tr_full[tr_sub]
-
-    clf_raw, sc_raw = fit_probe_layer(X_raw[tr_sub], y_tr, g_tr)
+    clf_raw, sc_raw = fit_probe_layer(X_raw[:n_tr], y_tr, g_tr)
     raw_val = eval_probe(clf_raw, sc_raw, X_raw[s_va], y_va)
     raw_test = eval_probe(clf_raw, sc_raw, X_raw[s_te], y_te)
 
-    clf_rec, sc_rec = fit_probe_layer(X_rec[tr_sub], y_tr, g_tr)
+    clf_rec, sc_rec = fit_probe_layer(X_rec[:n_tr], y_tr, g_tr)
     rec_val = eval_probe(clf_rec, sc_rec, X_rec[s_va], y_va)
     rec_test = eval_probe(clf_rec, sc_rec, X_rec[s_te], y_te)
 
     # For sparse codes z, keep non-dead atoms with highest variance on train split
-    var_tr = X_sp[tr_sub].var(axis=0)
+    var_tr = X_sp[:n_tr].var(axis=0)
     top_atoms = np.argsort(-var_tr)[:min(768, (var_tr > 1e-8).sum() or 768)]
-    clf_sp, sc_sp = fit_probe_layer(X_sp[tr_sub][:, top_atoms], y_tr, g_tr)
+    clf_sp, sc_sp = fit_probe_layer(X_sp[:n_tr][:, top_atoms], y_tr, g_tr)
     sp_val = eval_probe(clf_sp, sc_sp, X_sp[s_va][:, top_atoms], y_va)
     sp_test = eval_probe(clf_sp, sc_sp, X_sp[s_te][:, top_atoms], y_te)
 
@@ -801,17 +783,20 @@ def run_test_b(
     results["scale"] = scale
 
     # ── Step 3: train SAE ─────────────────────────────────────────────────
-    weights_path = C.CACHE_DIR / f"sae_{tag}{suffix}_layer{layer}.pt"
+    seed_suffix = f"_seed{seed}" if (not ctrl and seed != 0) else ""
+    weights_path = C.CACHE_DIR / f"sae_{tag}{suffix}_layer{layer}{seed_suffix}.pt"
     legacy_weights_path = C.SAE_CTRL_WEIGHTS if ctrl else C.SAE_WEIGHTS
+    sae_train_seed = seed if ctrl else (42 + seed)
     if weights_path.exists() and not rebuild_sae and not rebuild_tokens:
         print(f"[Test B] Loading SAE weights from {weights_path}")
         sae = BatchTopKSAE().to(device)
         sae.load_state_dict(torch.load(weights_path, map_location=device))
     else:
-        print(f"[Test B] Training BatchTopK SAE ({tag}, layer {layer})...")
-        sae = train_sae(shard_dir, scale, device=device, seed=seed if ctrl else 42)
+        print(f"[Test B] Training BatchTopK SAE ({tag}{seed_suffix}, layer {layer}, train_seed={sae_train_seed})...")
+        sae = train_sae(shard_dir, scale, device=device, seed=sae_train_seed)
         torch.save(sae.state_dict(), weights_path)
-        torch.save(sae.state_dict(), legacy_weights_path)
+        if seed == 0 or ctrl:
+            torch.save(sae.state_dict(), legacy_weights_path)
         print(f"SAE weights saved to {weights_path}")
 
     # ── Step 4: checks ─────────────────────────────────────────────────────
@@ -822,15 +807,15 @@ def run_test_b(
     results["checks"] = checks
 
     # ── Save ────────────────────────────────────────────────────────────────
-    ctrl_str = "_ctrl" if ctrl else ""
+    ctrl_str = f"_ctrl_seed{seed}" if (ctrl and seed != 0) else ("_ctrl" if ctrl else "")
     C.RUNS_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = C.RUNS_DIR / f"B_results{ctrl_str}{suffix}.json"
+    out_path = C.RUNS_DIR / f"B_results{ctrl_str}{suffix}{seed_suffix}.json"
     with open(out_path, "w") as f:
         json.dump(results, f, indent=2)
     print(f"\nSaved to {out_path}")
 
-    fig_path = C.RUNS_DIR / f"B_sae_diagnostics{ctrl_str}{suffix}.png"
-    _plot_sae_diagnostics(checks, atom_freqs, fig_path, tag)
+    fig_path = C.RUNS_DIR / f"B_sae_diagnostics{ctrl_str}{suffix}{seed_suffix}.png"
+    _plot_sae_diagnostics(checks, atom_freqs, fig_path, f"{tag}{seed_suffix}")
 
     return results
 
