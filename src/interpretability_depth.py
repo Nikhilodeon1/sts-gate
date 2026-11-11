@@ -224,6 +224,56 @@ def _plot_monosemanticity(raw_counts: np.ndarray, sae_counts: np.ndarray, out_pa
 # 1B. Token-Level Sparsity (L0) Distribution & Signal Energy Audit
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _load_sae_and_scale(layer: int = 8, device: str = "cpu"):
+    """Finds and loads trained BatchTopK SAE weights and scale constant."""
+    from sae import BatchTopKSAE
+
+    candidates = [
+        C.CACHE_DIR / f"sae_pretrained_sensitivity_without_S64_S67_layer{layer}.pt",
+        C.CACHE_DIR / f"sae_pretrained_layer{layer}.pt",
+        C.SAE_WEIGHTS,
+        C.CACHE_DIR / "sae_weights.pt",
+        C.RUNS_DIR / f"B_sae_sensitivity_without_S64_S67_layer{layer}.pt",
+        C.RUNS_DIR / f"B_sae_layer{layer}.pt",
+    ]
+    sae_path = None
+    for p in candidates:
+        if p.exists() and p.is_file() and p.stat().st_size > 0:
+            sae_path = p
+            break
+
+    if sae_path is None:
+        return None, None, None
+
+    # Load scale
+    scale = 1.0
+    scale_candidates = [
+        C.CACHE_DIR / f"scale_pretrained_sensitivity_without_S64_S67_layer{layer}.npy",
+        C.CACHE_DIR / f"scale_pretrained_layer{layer}.npy",
+        C.CACHE_DIR / "sae_scale.npy",
+        C.CACHE_DIR / "scale.npy",
+    ]
+    for sp in scale_candidates:
+        if sp.exists() and sp.is_file():
+            try:
+                scale = float(np.load(sp))
+                break
+            except Exception:
+                pass
+
+    loaded = torch.load(sae_path, map_location=device)
+    sae = BatchTopKSAE(d_in=C.D_MODEL, d_sae=6144, k=32).to(device)
+    if isinstance(loaded, dict) and "model_state" in loaded:
+        sae.load_state_dict(loaded["model_state"])
+        scale = float(loaded.get("scale", scale))
+    elif isinstance(loaded, dict):
+        sae.load_state_dict(loaded)
+    else:
+        raise ValueError(f"Unrecognized SAE checkpoint at {sae_path}")
+    sae.eval()
+    return sae, scale, sae_path
+
+
 def run_token_sparsity_audit(
     layer: int = 8,
     device: str = "cpu",
@@ -235,11 +285,19 @@ def run_token_sparsity_audit(
     correlates with token-level 12-lead signal energy (RMS amplitude).
     """
     from scipy.stats import spearmanr
-    from sae import BatchTopKSAE
 
     print("\n" + "="*70)
     print("ANALYSIS 1B: Token-Level L0 Sparsity Distribution & Signal Energy Audit")
     print("="*70)
+
+    sae, scale, sae_path = _load_sae_and_scale(layer, device)
+    if sae is None:
+        print(f"  [WARN] SAE weights not found in cache. Run Test B first to train SAE:")
+        print(f"         bash scripts/colab_run.sh test-b")
+        print("  Skipping Analysis 1B.")
+        return {"status": "skipped_missing_sae"}
+
+    print(f"  Loaded SAE from {sae_path} (scale={scale:.4f})")
 
     index = build_index()
     if exclude_run_ids:
@@ -249,19 +307,6 @@ def run_token_sparsity_audit(
     rng = np.random.default_rng(42)
     sample_idx = rng.choice(len(held_df), size=min(n_sample_ecgs, len(held_df)), replace=False)
     sample_df = held_df.iloc[sample_idx]
-
-    sae_path = C.RUNS_DIR / f"B_sae_sensitivity_without_S64_S67_layer{layer}.pt"
-    if not sae_path.exists():
-        sae_path = C.RUNS_DIR / f"B_sae_layer{layer}.pt"
-    if not sae_path.exists():
-        raise FileNotFoundError(f"Trained SAE checkpoint not found at {sae_path}")
-
-    ckpt = torch.load(sae_path, map_location=device)
-    scale = float(ckpt.get("scale", 1.0))
-    sae = BatchTopKSAE(d_in=C.D_MODEL, d_sae=6144, k=32)
-    sae.load_state_dict(ckpt["model_state"])
-    sae.to(device)
-    sae.eval()
 
     model, _, _ = load_ecgfm(random_init=False)
     model.to(device)
@@ -619,17 +664,11 @@ def run_waveform_grounding(
     test_idx = index[index["split"] == "test"].reset_index(drop=True)
 
     # Load trained SAE and model
-    scale_path = C.CACHE_DIR / f"scale_pretrained_sensitivity_without_S64_S67_layer{layer}.npy"
-    if not scale_path.exists():
-        scale_path = C.CACHE_DIR / f"scale_pretrained_layer{layer}.npy"
-    sae_path = C.CACHE_DIR / f"sae_pretrained_sensitivity_without_S64_S67_layer{layer}.pt"
-    if not sae_path.exists():
-        sae_path = C.SAE_WEIGHTS
-
-    scale = float(np.load(scale_path))
-    sae = BatchTopKSAE().to(device)
-    sae.load_state_dict(torch.load(sae_path, map_location=device))
-    sae.eval()
+    sae, scale, sae_path = _load_sae_and_scale(layer, device)
+    if sae is None:
+        print(f"  [WARN] SAE weights not found in cache. Skipping waveform grounding.")
+        return {}
+    print(f"  Loaded SAE from {sae_path} (scale={scale:.4f})")
 
     model, _, _ = load_ecgfm(random_init=False)
     model.to(device)
@@ -838,11 +877,22 @@ def run_sae_stability_audit(
     ckpts = {}
     for s in seeds:
         tag = f"_seed{s}" if s != 0 else ""
-        p = C.RUNS_DIR / f"B_sae_sensitivity_without_S64_S67_layer{layer}{tag}.pt"
-        if not p.exists() and s == 0:
-            p = C.RUNS_DIR / f"B_sae_layer{layer}.pt"
-        if p.exists():
-            ckpts[s] = torch.load(p, map_location="cpu")
+        candidates = [
+            C.CACHE_DIR / f"sae_pretrained_sensitivity_without_S64_S67_layer{layer}{tag}.pt",
+            C.CACHE_DIR / f"sae_pretrained_layer{layer}{tag}.pt",
+            C.RUNS_DIR / f"B_sae_sensitivity_without_S64_S67_layer{layer}{tag}.pt",
+            C.RUNS_DIR / f"B_sae_layer{layer}{tag}.pt",
+        ]
+        if s == 0:
+            candidates.extend([C.SAE_WEIGHTS, C.CACHE_DIR / "sae_weights.pt"])
+        for p in candidates:
+            if p.exists() and p.is_file() and p.stat().st_size > 0:
+                loaded = torch.load(p, map_location="cpu")
+                if isinstance(loaded, dict) and "model_state" in loaded:
+                    ckpts[s] = loaded["model_state"]
+                elif isinstance(loaded, dict) and "W_dec" in loaded:
+                    ckpts[s] = loaded
+                break
 
     if len(ckpts) < 2:
         print(f"  [INFO] Found {len(ckpts)} SAE checkpoint(s) ({list(ckpts.keys())}).")
@@ -853,8 +903,8 @@ def run_sae_stability_audit(
 
     # Extract decoder directions
     decoders = {}
-    for s, ckpt in ckpts.items():
-        w_dec = ckpt["model_state"]["W_dec"].float()  # (6144, 768)
+    for s, state in ckpts.items():
+        w_dec = state["W_dec"].float()  # (6144, 768)
         w_dec = w_dec / w_dec.norm(dim=1, keepdim=True).clamp(min=1e-8)
         decoders[s] = w_dec
 
