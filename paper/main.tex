@@ -32,23 +32,12 @@ Pretrained biosignal foundation models have emerged as state-of-the-art diagnost
 
 In biomedical signals, evaluating the success of dictionary learning faces a fundamental roadblock: \textbf{the ground-truth measurement gap}. When an SAE is trained on representations of clinical human ECGs, features are typically annotated using heuristic surface-interval rules (e.g., automated PR or QT interval calipers) or correlated clinical ICD diagnostic codes~\cite{duan2026cadence,ecginterpbench2026}. However, surface ECG waveforms reflect the spatial projection of microscopic transmembrane potentials governed by reaction-diffusion partial differential equations (PDEs) through a volume-conductor torso~\cite{clayton2011models,macfarlane2010comprehensive}. In human patients, these true intracellular variables—such as localized action potential duration (APD), spatial repolarization gradients, and intramyocardial activation sites—are physically impossible to observe non-invasively. Consequently, clinical benchmarks cannot determine whether an SAE has isolated genuine biophysical mechanisms or merely discovered clever statistical proxies of torso geometry and electrode placement.
 
-\begin{figure}[t]
+\begin{figure*}[t]
 \centering
-\fbox{\parbox{0.95\columnwidth}{\centering \small
-\textbf{Biophysical Simulation Framework}\\
-118 Human Ventricular Meshes (MedalCare-XL)\\
-$\Downarrow$ coupled Reaction-Diffusion PDEs\\
-$N = 14,065$ Forward-Projected 12-Lead ECGs\\
-$\Downarrow$\\
-\textbf{ECG-FM Foundation Model (Layer 8)}\\
-$\Downarrow$\\
-\textbf{JumpReLU SAE ($8\times$ Expansion, $d=6,144$)}\\
-$\Downarrow$\\
-\textbf{Controlled Multi-Mesh In Silico Verification}
-}}
-\caption{System schematic: We utilize 14,065 synthetic ECG records simulated across 118 real human ventricular anatomies to evaluate representation decoding and SAE feature recovery against exact microscopic PDE ground truth.}
+\includegraphics[width=0.98\textwidth]{figures/fig1_pipeline.pdf}
+\caption{\textbf{Biophysical Simulation \& Verification Framework.} We evaluate Layer~8 latents of ECG-FM on 14,065 forward-simulated 12-lead ECGs derived from coupled reaction-diffusion PDEs across 118 real human ventricular anatomies. An $8\times$ JumpReLU SAE ($M = 6,144$) is audited against exact intracellular ground truth under multi-mesh FDR control.}
 \label{fig:framework}
-\end{figure}
+\end{figure*}
 
 In this paper, we bridge this verification gap by introducing an \textit{in silico} evaluation case study. We leverage the MedalCare-XL framework~\cite{nagel2021medalcare}, a comprehensive biophysical dataset consisting of 14,065 12-lead ECGs generated via high-performance numerical solutions of coupled cardiac PDEs across 118 patient-specific torso and ventricular geometries (Figure~\ref{fig:framework}). Because every underlying cellular parameter is logged with mathematical certainty, this testbed enables the first direct verification of whether cardiac foundation model latents and their sparse autoencoder dictionaries reflect genuine intracellular electrophysiology.
 
@@ -196,18 +185,8 @@ Of the 20 generative biophysical parameters varied across meshes, the SAE dictio
 
 \begin{figure}[h]
 \centering
-\fbox{\parbox{0.9\columnwidth}{\centering \small
-\textbf{Selectivity Distribution of 254 Associated Atoms}\\
-\vspace{0.4em}
-1 Parameter (Monosemantic): \textbf{204 atoms (80.31\%)}\\
-2 Parameters: \textbf{35 atoms (13.78\%)}\\
-3 Parameters: \textbf{10 atoms (3.94\%)}\\
-4 Parameters: \textbf{4 atoms (1.57\%)}\\
-5 Parameters: \textbf{1 atom (0.39\%)}\\
-\vspace{0.4em}
-\textit{Mean parameter load: $1.28 \pm 0.61$ parameters/atom}
-}}
-\caption{Parameter selectivity across the 254 associated dictionary atoms. Over 80\% of associated features respond to exactly one physiological parameter.}
+\includegraphics[width=\columnwidth]{figures/fig2_selectivity.pdf}
+\caption{\textbf{Parameter Selectivity Distribution (Test C).} Among the 254 associated dictionary atoms, 80.31\% (204) are monosemantic, correlating with exactly one physiological parameter. 5,890 atoms (95.9\% of the full dictionary) remain unassociated under FDR $q < 0.05$ and $|\rho| \ge 0.25$.}
 \label{fig:selectivity}
 \end{figure}
 
@@ -245,7 +224,14 @@ $v_{\text{isch}[0].z}$    & 0.364 & 0.342 & $+0.022$ $[-0.018, +0.062]$ & 0.298 
 \end{tabular}
 \end{table*}
 
-The decodability benchmark in Table~\ref{tab:decodability} yields two fundamental results:
+\begin{figure*}[t]
+\centering
+\includegraphics[width=0.92\textwidth]{figures/fig3_decodability.pdf}
+\caption{\textbf{Biophysical Parameter Decodability ($R^2$ on 13 Unseen Test Meshes).} Both Pretrained SAE ($R^2 = 0.378$) and Dense Layer 8 ($R^2 = 0.354$) outperform clinical surface calipers ($R^2 = 0.145$ for APD) by $2.6\times$ in variance explained. The SAE and Dense representations exhibit statistical equivalence ($\Delta R^2 \le +0.024$, 95\% CIs crossing zero), demonstrating that SAEs provide coordinate re-alignment rather than superior decodability.}
+\label{fig:decodability}
+\end{figure*}
+
+The decodability benchmark in Table~\ref{tab:decodability} and Figure~\ref{fig:decodability} yields two fundamental results:
 
 \paragraph{1. Latents Exceed Clinical Surface Morphology.}
 Both the SAE ($R^2 = 0.378$) and dense latents ($R^2 = 0.354$) dramatically outperform standard clinical ECG morphology calipers ($R^2 = 0.145$ for APD, derived primarily from the surface QT interval). This represents a \textbf{$2.6\times$ increase in variance explained}, proving that the pretrained foundation model captures microscopic repolarization kinetics that cannot be explained away as trivial surface caliper proxies. Conductor nuisance features achieve $R^2 \approx 0.000$, confirming zero shortcut leakage.
@@ -285,7 +271,14 @@ This establishes that while the underlying electrophysiological subspace is cons
 We further investigated whether zero-ablating confirmed biophysical atoms alters downstream model predictions. In targeted ablation experiments, zeroing out individual confirmed APD atoms produced small prediction shifts ($\Delta \le 0.012$). However, a randomized ablation control (zeroing random active atoms) produced shifts of magnitude $-0.0107$. Because the targeted drop falls within the empirical noise floor of random dictionary perturbations, individual atoms cannot be interpreted as isolated causal levers without accounting for distributed subspace compensation~\cite{paulo2025circuit}.
 
 \section{Beat-Aligned Phase Localization}
-To examine whether biophysical atoms fire during physiologically coherent phases of the cardiac cycle, we delineated 12-lead waveforms into four canonical fiducial windows: (1) QRS complex (depolarization), (2) ST segment, (3) T-wave (repolarization), and (4) isoelectric baseline.
+To examine whether biophysical atoms fire during physiologically coherent phases of the cardiac cycle, we delineated 12-lead waveforms into four canonical fiducial windows: (1) QRS complex (depolarization), (2) ST segment, (3) T-wave (repolarization), and (4) isoelectric baseline (Figure~\ref{fig:phase}).
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figures/fig4_phase.pdf}
+\caption{\textbf{Beat-Aligned Cardiac Phase Delineation.} Activation mass of stimulus site atoms concentrates in QRS depolarization ($74.2\%$, $p < 0.001$), while APD restitution atoms concentrate in ST-T repolarization ($68.7\%$, $p < 0.001$). Token $L_0$ expands during quiet isoelectric intervals ($\rho = -0.345$).}
+\label{fig:phase}
+\end{figure}
 
 \paragraph{Activation Mass Concentration.}
 Stimulus site atoms ($v_{\text{stim}}$) concentrate $74.2\%$ of their total activation mass strictly within the QRS depolarization window ($p < 0.001$, within-record phase permutation test). Conversely, APD atoms ($v_{\text{APD}}$) concentrate $68.7\%$ of their activation mass within the ST-T repolarization phase ($p < 0.001$). 
