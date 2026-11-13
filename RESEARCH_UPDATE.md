@@ -1,62 +1,57 @@
-# Research Update & Reviewer Briefing Dossier
-**Project:** `sts-gate` / ECG Ground-Truth Mechanistic Interpretability  
+# Research Update & Mock Review Response Dossier
+**Project:** `sts-gate` / Cardiac Foundation Model Biophysical Ground-Truth Evaluation  
 **Paper Title:** *Do Sparse Autoencoders Recover Biophysical Features in Pretrained Cardiac Foundation Models? An in silico Ground-Truth Case Study*  
-**Primary Target Venue:** AAAI-27 Workshop on Foundation Models for Multisensory Intelligence (*Making Sense*) / AI4TS (Deadline: Nov 20, 2026; 7 pages + unlimited appendix)  
-**Accompanying Manuscript PDF:** [`paper/main.pdf`](file:///c:/Users/nikhi/Codes/TEST/sts-gate/paper/main.pdf) (8 pages: 7 pages main text + references, 1 page appendix)
+**Target Venue:** AAAI-27 Workshop on Foundation Models for Multisensory Intelligence (*Making Sense*) / AI4TS (Deadline: Nov 20, 2026)  
+**Compiled Manuscript PDF:** [`paper/main.pdf`](file:///c:/Users/nikhi/Codes/TEST/sts-gate/paper/main.pdf) (8 pages total: 7 pages main text + references, 1 page appendix)
 
 ---
 
-## 1. Executive Summary for the Mock Reviewer
+## 1. Summary of Changes in Response to Mock Review
 
-Pretrained cardiac foundation models (such as ECG-FM) demonstrate state-of-the-art diagnostic capabilities across multi-lead electrocardiography. However, understanding their latent representations using mechanistic interpretability (e.g., Sparse Autoencoders / SAEs) faces a fundamental verification bottleneck: **in living human patient cohorts, true cellular-level cardiac states cannot be recorded invasively.** Prior benchmarks (e.g., CADENCE, ECG-InterpBench) relied exclusively on surface-interval calipers (e.g., QT intervals) or clinical ICD codes, which cannot distinguish genuine cellular biophysics from torso geometry or electrode shortcuts.
+Following the rigorous mock review, we performed a comprehensive pass over the bibliography, equations, figures, and claims to eliminate vulnerabilities:
 
-### Our Solution
-We conduct the first **in silico ground-truth case study** utilizing the MedalCare-XL simulation framework:
-- **118 Anatomically Distinct Human Geometries:** Patient-specific ventricular and torso meshes derived from clinical MRI/CT scans.
-- **Multiscale Biophysical Forward Modeling:** Microscopic monodomain reaction-diffusion PDEs coupled to human cellular ionic models (ten Tusscher–Panfilov) forward-projected to standard 12-lead body-surface potentials ($N = 14,065$ clean primary cohort).
-- **Exact Intracellular Ground Truth:** Every record logs mathematical ground truth for local action potential duration (APD) restitution ($v_{\text{APD}}$), 3D myocardial activation/stimulus coordinates ($v_{\text{stim}}$), and transmural ischemic lesions ($v_{\text{isch}}$).
-- **Representation & Dictionary Learning:** Intermediate representations extracted from Layer 8 of ECG-FM ($d = 768$) and an $8\times$ overcomplete JumpReLU Sparse Autoencoder ($M = 6,144$ dictionary atoms).
+### A. Reference Integrity (100% Rebuilt & Verified)
+- **MedalCare-XL:** Corrected to Gillette, Gsell, Nagel, Prassl, Doessel, Plank, and Loewe, *Scientific Data* vol. 10, article 531, 2023 (16,900-subject dataset).
+- **ECG-FM:** Corrected to McKeen et al., *JAMIA Open* 2025. Removed inaccurate "vision-transformer-style" and "masked autoregressive" phrasing; accurately described as a 12-layer transformer trained with masked reconstruction and contrastive objectives.
+- **Paulo & Belrose:** Corrected title and citation to *"Sparse Autoencoders Trained on the Same Data Learn Different Features"* (arXiv 2501.16615, 2025). Contextualized our 8% vector overlap with their observation of only ~30% feature overlap across seeds and heightened seed sensitivity in TopK/thresholded architectures.
+- **CADENCE & ECG-InterpBench:** Corrected citations to Duan et al. (2026) and Duan (Rice, 2026). Directly noted CADENCE's finding that sparse probes match/beat dense representations on clinical targets, establishing our unique differentiator: microscopic PDE ground truth.
+- **Added Heap et al. (2025):** *"SAEs Can Interpret Randomly Initialized Transformers"*, explaining why evaluating random controls is essential.
 
----
+### B. Mathematical Formulations & Physics Nomenclature
+- **Monodomain Equation (Eq. 1):** Added the membrane surface-to-volume ratio $\chi$:
+  $$\nabla \cdot (\bm{\sigma} \nabla V_m) = \chi \left( C_m \frac{\partial V_m}{\partial t} + I_{\text{ion}}(V_m, \bm{w}) \right)$$
+- **Thoracic Potential Field (Eq. 2):** Updated to the boundary element transfer formulation ($\bm{\Phi}_{\text{body}} = \bm{T} \bm{J}_i$) rather than an unbounded homogeneous free-space integral.
+- **Nomenclature:** Replaced the misnomer "APD restitution" with exact terms: baseline action potential duration ($v_{\text{APD.min}}$) and apical-basal repolarization gradient ($v_{\text{APD.}\rho_d}$).
 
-## 2. Core Empirical Findings & Evidence Guide
+### C. Calibrated Scientific Claims & Rigor
+- **Decodability Advantage:** Abstract and text now clearly distinguish Dense ($2.4\times$ variance over surface calipers: $0.354$ vs. $0.145$) and SAE ($2.6\times$ variance: $0.378$ vs. $0.145$).
+- **Parity Result Reframing:** Replaced the flawed TOST $p < 0.01$ claim with a mathematically defensible confidence interval interpretation: the 95% cluster-bootstrap CI $[-0.008, +0.056]$ crosses zero and excludes decodability advantages above $+0.06$.
+- **Term Usage:** Replaced "coordinate rotation" with "sparse overcomplete feature transformation" (since JumpReLU is non-linear and $8\times$ overcomplete).
+- **Nuisance Control:** Frankly stated that torso conductivities and electrode coordinates have zero within-mesh variance by design in MedalCare-XL, explaining why $R^2 \approx 0.000$ and avoiding overclaiming shortcut immunity.
+- **Ablation & Phase Localization:** Demoted the ablation study (acknowledging it falls within random perturbation noise floor) and compressed Section 6 to one crisp paragraph acknowledging biophysical coupling and time autocorrelation.
 
-| Claim | Finding & Evidence | Figure / Table in Paper |
-| :--- | :--- | :--- |
-| **1. Diagnostic Depth** | Layer 8 captures peak diagnostic information: Test AUROC $= 0.9925 \pm 0.003$ and Accuracy $= 90.84\%$ (vs. $0.8107$ for 3-seed random-weight control, $p < 10^{-15}$). | **Table 1** |
-| **2. SAE Information Preservation** | Pretrained JumpReLU SAE achieves $88.18\%$ token explained variance with only 21 dead atoms ($0.34\%$). Linear probe on sparse codes achieves $0.9911$ AUROC. | **Table 2** |
-| **3. Ground-Truth Biophysical Recovery** | Multi-mesh permutation testing with Benjamini-Hochberg FDR control ($q < 0.05, \|\rho\| \ge 0.25$) confirms **174 pure biophysical atoms** (120 APD, 58 stimulus site, 4 overlap). | **Table 3** & **Figure 1** |
-| **4. High Parameter Selectivity** | **80.31% of associated atoms (204 / 254) are strictly monosemantic**, correlating with exactly one biophysical parameter (mean load $1.28 \pm 0.61$). | **Figure 2** |
-| **5. Exceeding Clinical Calipers** | Latents decode APD restitution ($R^2 = 0.378$) with **$2.6\times$ higher variance explained** than standard surface QT intervals ($R^2 = 0.145$), ruling out surface-shortcut heuristics. Torso conductivities yield $R^2 \approx 0.000$. | **Table 4** & **Figure 3** |
-| **6. The SAE-Dense Parity Result** | The SAE does **not** beat the dense representation in decodability ($\Delta R^2 \le +0.024$, 95% bootstrap CI $[-0.008, +0.056]$ crosses zero; TOST equivalent within $\pm 0.05$). Dense neurons have a higher hit rate ($10.5\%$ vs. $4.1\%$). | **Table 4** & **Figure 3** |
-| **7. Dictionary Stability Paradox** | Dictionary atom vectors are unstable across random training seeds ($\sim 8\%$ vector cosine match $\ge 0.70$), yet **functional association replicates at $68.39\%$** ($119 / 174$), demonstrating that electrophysiological subspaces are robust but basis decomposition is non-unique. | **Table 5** |
-| **8. Beat-Aligned Phase Localization** | Stimulus site atoms concentrate $74.2\%$ of activation mass within QRS depolarization ($p < 0.001$), while APD atoms concentrate $68.7\%$ within ST-T repolarization ($p < 0.001$). Token $L_0$ is inversely correlated with cardiac energy ($\rho = -0.345$). | **Figure 4** |
-
----
-
-## 3. Visual Presentation Overview
-
-The paper includes four publication-grade vector figures generated via matplotlib (`paper/figures/`):
-- **Figure 1 (System Pipeline, Page 2):** High-level workflow from 118 ventricular meshes $\to$ PDEs $\to$ 14,065 ECGs $\to$ ECG-FM Layer 8 $\to$ JumpReLU SAE $\to$ FDR-controlled in-silico ground-truth verification.
-- **Figure 2 (Atom Selectivity Distribution, Page 4):** Clear histogram showing the 80.3% monosemantic isolation rate across associated dictionary atoms.
-- **Figure 3 (Biophysical Decodability Benchmark, Page 6):** Grouped bar chart comparing $R^2$ across SAE, Dense Layer 8, Top-32 Dense, and Clinical Morphology, highlighting the $2.6\times$ advantage over surface calipers and visual parity between SAE and Dense.
-- **Figure 4 (Beat-Aligned Cardiac Phase Delineation, Page 6):** Multi-panel Lead II ECG with shaded cardiac intervals (QRS, ST-T, isoelectric) plotted against the empirical activation mass densities of stimulus and APD atoms.
+### D. Redrawn Publication Figures (`paper/figures/`)
+- **Figure 1 (Pipeline):** Redrawn with clear forward flow, larger text/arrows, non-overlapping boxes, and a direct arrow from MedalCare-XL exact PDE ground truth feeding into the multi-mesh statistical audit box.
+- **Figure 2 (Selectivity):** Compact single-column layout clearly showing that 80.3% of associated atoms correlate with 1 parameter, while 95.9% of the full dictionary is unassociated.
+- **Figure 3 (Decodability):** Moved legend to upper left (preventing collision with Isch $z$), added error bars showing 95% cluster-bootstrap CIs, and assigned distinct color palettes for Dense vs. Top-32.
+- **Figure 4 (Phase):** Added uniform temporal chance baseline (dotted line), clear window bounds, and noted that it illustrates fiducial gating.
 
 ---
 
-## 4. Key Questions for the Mock Reviewer to Analyze
+## 2. Evidence & Table Reconciliation
 
-When reviewing [`paper/main.pdf`](file:///c:/Users/nikhi/Codes/TEST/sts-gate/paper/main.pdf), please evaluate:
-1. **Calibration & Tone:** Does the framing strike the right balance between highlighting a genuine scientific discovery (pretrained representations encode intracellular kinetics far beyond clinical calipers) and sober restraint (SAEs provide coordinate transformation rather than superior decodability or causal control)?
-2. **Visual Flow & Layout:** How do Figures 1–4 and Tables 1–5 read across the two-column layout? Does the visual hierarchy guide the reader naturally?
-3. **Pacing within the 7-Page Limit:** The main body and references occupy pages 1–7, with supplementary methodology on page 8. Is the narrative concise yet mathematically and biologically self-contained?
-4. **Differentiation from Prior Work:** Is the distinction from clinical-only benchmarks (CADENCE, ECG-InterpBench) sufficiently clear and compelling?
+All numbers in the paper match [`src/generate_all_tables.py`](file:///c:/Users/nikhi/Codes/TEST/sts-gate/src/generate_all_tables.py) with 100% precision:
+- **Table 1:** Diagnostic probing (Layer 8 test AUROC $0.9925$, random control $0.8107$). Clarified that Table 1 uses regularized logistic regression on mean-pooled record latents, while Table 2 uses token-level probes.
+- **Table 2:** SAE fidelity ($88.18\%$ held token EV, $0.34\%$ dead atoms, $0.9911$ sparse AUROC).
+- **Table 3:** Confirmation of 174 headline biophysical atoms (120 APD, 58 stimulus site, 4 overlap) under multi-mesh FDR $q < 0.05, |\rho| \ge 0.25$.
+- **Table 4:** Decodability benchmark across 7 representations on 13 unseen test meshes.
+- **Table 5:** Stability analysis on 174 atoms ($\sim 8\%$ vector overlap vs. $68.4\%$ functional replication).
+- **Table 6 (Appendix):** Parameter recall audit across all 29 non-zero-variance parameters (20 biophysics, 4 ischemia, 5 morphology; 12 confirmed = $41.4\%$).
 
 ---
 
-## 5. Single Source of Truth Verification
-All reported metrics can be independently reproduced in 4 seconds by running:
-```bash
-python src/generate_all_tables.py
-```
-Outputs match the underlying raw JSON/CSV artifacts in `runs/` with 100% precision.
+## 3. Reviewer Verification Links
+- Compiled PDF: [`paper/main.pdf`](file:///c:/Users/nikhi/Codes/TEST/sts-gate/paper/main.pdf)
+- LaTeX Source: [`paper/main.tex`](file:///c:/Users/nikhi/Codes/TEST/sts-gate/paper/main.tex)
+- BibTeX Database: [`paper/references.bib`](file:///c:/Users/nikhi/Codes/TEST/sts-gate/paper/references.bib)
+- Table Generator: [`src/generate_all_tables.py`](file:///c:/Users/nikhi/Codes/TEST/sts-gate/src/generate_all_tables.py)
