@@ -40,3 +40,11 @@ runs/*.pt
 !runs/*.csv
 !runs/*.png
 !runs/*.md
+
+# LaTeX
+paper/*.aux
+paper/*.bbl
+paper/*.blg
+paper/*.out
+paper/*.log
+paper/*.synctex.gz
