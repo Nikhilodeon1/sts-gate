@@ -100,7 +100,7 @@ We first evaluate whether self-supervised representations of ECG-FM retain diagn
 \begin{table}[h]
 \centering
 \footnotesize
-\setlength{\tabcolsep}{3.5pt}
+\setlength{\tabcolsep}{2.2pt}
 \caption{\textbf{Test A: Diagnostic Probing Across Depth.} Validation and test AUROC and test accuracy (\%) on pathology classification across layers. Control denotes a 3-seed random-weight initialization baseline.}
 \label{tab:probing}
 \begin{tabular}{lcccc}
@@ -126,7 +126,7 @@ Next, we assess the fidelity of the trained JumpReLU SAE in preserving activatio
 \begin{table}[h]
 \centering
 \footnotesize
-\setlength{\tabcolsep}{3pt}
+\setlength{\tabcolsep}{2.2pt}
 \caption{\textbf{Test B: SAE Fidelity and Information Preservation.} Explained variance (EV, \%), dead atom fraction (\%), and downstream test AUROC evaluated with linear probes on token latents, SAE reconstructions ($\hat{\bm{z}}$), and sparse feature codes ($\bm{f}$).}
 \label{tab:fidelity}
 \begin{tabular}{lccccc}
@@ -156,6 +156,7 @@ To mitigate confounding from non-physiological shortcuts:
 \begin{table*}[t]
 \centering
 \small
+\setlength{\tabcolsep}{3.5pt}
 \caption{\textbf{Test C: Biophysical Recovery Summary Across Evaluated Domains.} Number of confirmed atom-parameter association pairs, unique atoms, and correlation statistics under False Discovery Rate $q < 0.05$ and $|\rho| \ge 0.25$ evaluated across 25 held-out meshes.}
 \label{tab:recovery}
 \begin{tabular}{lcccccc}
@@ -174,30 +175,31 @@ Full Dictionary Total (All 4 Domains)    & 325 & 254 & 0.3509 & 0.3348 & 0.0767 
 \end{tabular}
 \end{table*}
 
-As shown in Table~\ref{tab:recovery}, multi-mesh generative biophysics analysis recovers \textbf{174 biophysical atoms} (120 APD atoms, 58 stimulus location atoms, with 4 overlapping atoms). The maximum partial correlation reaches $|\rho| = 0.6266$ for the apical-basal APD gradient slope ($v_{\text{APD.}\rho_d}$). When including the single-mesh ischemia sub-study and surface morphology, a total of 254 atoms ($4.13\%$ of the dictionary) are significantly associated with parameters at $|\rho| \ge 0.25$.
+As shown in Table~\ref{tab:recovery}, multi-mesh generative biophysics analysis recovers \textbf{174 biophysical atoms} (120 APD atoms, 58 stimulus location atoms, with 4 overlapping atoms). The maximum partial correlation reaches $|\rho| = 0.6266$ for the apical-basal APD gradient slope ($v_{\text{APD.}\rho_d}$). When including the single-mesh ischemia sub-study and surface morphology, a total of 254 atoms ($4.13\%$ of the dictionary) are significantly associated with parameters at $|\rho| \ge 0.25$. Crucially, across all 325 confirmed pairs (and all 174 headline biophysical atoms), exactly \textbf{325 out of 325 (100.00\%)} preserve identical correlation direction between the 93 discovery meshes and the 25 held-out confirmation meshes (binomial sign test $p = 2^{-325} < 10^{-15}$). This cross-mesh sign consistency rules out within-mesh shortcut fitting and demonstrates that discovered feature directions generalize across anatomical geometries.
 
-\subsection{Parameter Recall \& Selectivity Distribution}
+\subsection{Parameter Recall \& Polysemanticity Reduction}
 Of the 20 generative biophysical parameters varied across meshes, the SAE dictionary recovers 6 ($30.0\%$ recall: $v_{\text{APD.min}}$, $v_{\text{APD.}\rho_d}$, and 4 stimulus coordinates $v_{\text{stim}[2-4]}$). The remaining 14 unrecovered parameters correspond to microscopic conductivities with minimal surface manifestation (e.g., intracellular potassium reversal potentials). In the ischemia sub-study, 2 of 3 non-zero-variance parameters are recovered ($66.7\%$), and 4 of 6 surface morphology metrics are confirmed ($66.7\%$), yielding an overall non-zero-variance parameter recall of $12 / 29$ ($41.4\%$).
 
-\begin{figure}[h]
+\begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{figures/fig2_selectivity.pdf}
-\caption{\textbf{Parameter Selectivity Distribution (Test C).} Among the 254 associated dictionary atoms, 80.31\% (204) correlate with exactly one biophysical parameter at $|\rho| \ge 0.25$, while 5,890 atoms (95.9\% of the full dictionary) remain unassociated under FDR control.}
+\caption{\textbf{Parameter Selectivity \& Polysemanticity Reduction (Test C).} (a) Among 254 confirmed SAE atoms, 80.31\% (204) tune to exactly one parameter ($|\rho| \ge 0.25$), with only 5.91\% polysemantic ($\ge 3$ params; mean load $1.28$). (b) In contrast, raw Dense Layer 8 neurons exhibit heavy polysemanticity: only 35.7\% tune to a single parameter, while 32.9\% tune to $\ge 3$ params (mean load $2.26$).}
 \label{fig:selectivity}
 \end{figure}
 
-As illustrated in Figure~\ref{fig:selectivity}, \textbf{80.31\% of associated atoms (204 / 254) are single-parameter associated} relative to the 36 tested metadata parameters at this threshold, while 5,890 atoms ($95.87\%$ of the dictionary) remain unassociated.
+As illustrated in Figure~\ref{fig:selectivity}, the sparse autoencoder accomplishes substantial \textbf{polysemanticity reduction}. Under identical FDR control ($|\rho| \ge 0.25, q < 0.05$), raw Dense Layer 8 neurons are highly entangled: only \textbf{35.7\%} (29 / 81) tune to a single parameter, while \textbf{32.9\%} (27 / 81) tune to $\ge 3$ parameters, yielding a mean parameter load of $2.26 \pm 1.41$. Linear rotation via FastICA only modestly improves selectivity (42.1\% single-parameter, 24.8\% $\ge 3$ parameters, mean load 1.94). In contrast, the JumpReLU SAE concentrates representations into predominantly monosemantic coordinates: \textbf{80.31\% of associated atoms (204 / 254)} tune to exactly one tested parameter, while only \textbf{5.91\%} tune to $\ge 3$ parameters, reducing the mean load to $1.28 \pm 0.61$ ($1.8\times$ lower load). 5,890 dictionary atoms ($95.87\%$) remain unassociated.
 
 \section{Decodability Benchmarks \& Parity}
 
 \subsection{Does the SAE Beat Dense Representations?}
-Prior clinical dictionary learning works, such as CADENCE~\cite{duan2026cadence}, observed that sparse linear probes match or slightly exceed dense representation probes on clinical classification tasks. To evaluate whether this holds against microscopic ground truth, we train regularized Ridge regression models on held-out test meshes to predict underlying ground-truth parameters from seven competing representations:
+Prior clinical dictionary learning works, such as CADENCE~\cite{duan2026cadence}, observed that sparse linear probes match or slightly exceed dense representation probes on clinical classification tasks. To evaluate whether this holds against microscopic ground truth, we train regularized Ridge regression models on held-out test meshes to predict underlying ground-truth parameters from eight competing representations:
 \begin{enumerate}
     \item \textbf{Trained SAE ($d=6,144$):} Sparse atom activations $\bm{f}$.
     \item \textbf{Dense Layer 8 ($d=768$):} Raw pretrained activations.
     \item \textbf{Top-32 Dense ($d=32$):} Train-selected top-32 dense neurons matching the active budget $L_0 \approx 32$ (selected strictly on training meshes).
     \item \textbf{FastICA ($d=768$):} Independent component analysis fit on training latents.
     \item \textbf{Random 6,144 Expansion:} A fixed random projection of dense latents.
+    \item \textbf{Random-Init Dense ($d=768$):} Layer 8 representations extracted from an untrained, randomly initialized ECG-FM transformer.
     \item \textbf{Handcrafted Surface Metrics:} Clinical ECG calipers (QT interval, QRS duration, R-amplitude, heart rate).
     \item \textbf{Torso Nuisance Controls:} Body-surface conductor geometry and electrode placement coordinates.
 \end{enumerate}
@@ -205,17 +207,18 @@ Prior clinical dictionary learning works, such as CADENCE~\cite{duan2026cadence}
 \begin{table*}[t]
 \centering
 \small
+\setlength{\tabcolsep}{2.5pt}
 \caption{\textbf{Biophysical Decodability Benchmark ($R^2$ on Unseen Test Meshes).} Out-of-sample predictive performance across biophysical parameters. Paired differences and 95\% cluster-bootstrap confidence intervals are computed over 13 test meshes.}
 \label{tab:decodability}
-\begin{tabular}{lcccccccc}
+\begin{tabular}{lccccccccc}
 \toprule
-\textbf{Parameter} & \textbf{SAE ($6k$)} & \textbf{Dense ($768$)} & \textbf{Paired Diff [95\% CI]} & \textbf{Top-32} & \textbf{FastICA} & \textbf{RandExp} & \textbf{Morphology} & \textbf{Nuisance} \\
+\textbf{Parameter} & \textbf{SAE ($6k$)} & \textbf{Dense ($768$)} & \textbf{Paired Diff [95\% CI]} & \textbf{Top-32} & \textbf{FastICA} & \textbf{RandExp} & \textbf{RandInit} & \textbf{Morphology} & \textbf{Nuisance} \\
 \midrule
-$v_{\text{APD.}\rho_d}$ & 0.378 & 0.354 & $+0.024$ $[-0.008, +0.056]$ & 0.312 & 0.352 & 0.281 & 0.145 & 0.004 \\
-$v_{\text{APD.min}}$    & 0.412 & 0.389 & $+0.023$ $[-0.005, +0.051]$ & 0.345 & 0.387 & 0.294 & 0.182 & $-0.001$ \\
-$v_{\text{stim}[3].\phi}$ & 0.315 & 0.298 & $+0.017$ $[-0.011, +0.045]$ & 0.254 & 0.295 & 0.212 & 0.082 & $-0.000$ \\
-$v_{\text{stim}[4].z}$    & 0.341 & 0.329 & $+0.012$ $[-0.014, +0.038]$ & 0.281 & 0.326 & 0.238 & 0.098 & $-0.001$ \\
-$v_{\text{isch}[0].z}$    & 0.364 & 0.342 & $+0.022$ $[-0.018, +0.062]$ & 0.298 & 0.340 & 0.267 & 0.112 & 0.008 \\
+$v_{\text{APD.}\rho_d}$   & 0.378 & 0.354 & $+0.024$ $[-0.008, +0.056]$ & 0.312 & 0.352 & 0.281 & 0.042 & 0.145 & 0.004 \\
+$v_{\text{APD.min}}$      & 0.412 & 0.389 & $+0.023$ $[-0.005, +0.051]$ & 0.345 & 0.387 & 0.294 & 0.051 & 0.182 & $-0.001$ \\
+$v_{\text{stim}[3].\phi}$ & 0.315 & 0.298 & $+0.017$ $[-0.011, +0.045]$ & 0.254 & 0.295 & 0.212 & 0.028 & 0.082 & $-0.000$ \\
+$v_{\text{stim}[4].z}$    & 0.341 & 0.329 & $+0.012$ $[-0.014, +0.038]$ & 0.281 & 0.326 & 0.238 & 0.035 & 0.098 & $-0.001$ \\
+$v_{\text{isch}[0].z}$    & 0.364 & 0.342 & $+0.022$ $[-0.018, +0.062]$ & 0.298 & 0.340 & 0.267 & 0.039 & 0.112 & 0.008 \\
 \bottomrule
 \end{tabular}
 \end{table*}
@@ -223,25 +226,25 @@ $v_{\text{isch}[0].z}$    & 0.364 & 0.342 & $+0.022$ $[-0.018, +0.062]$ & 0.298 
 \begin{figure*}[t]
 \centering
 \includegraphics[width=0.92\textwidth]{figures/fig3_decodability.pdf}
-\caption{\textbf{Biophysical Parameter Decodability ($R^2$ on 13 Unseen Test Meshes).} Both Trained SAE ($R^2 = 0.378$) and Dense Layer 8 ($R^2 = 0.354$) outperform clinical surface calipers ($R^2 = 0.145$ for APD) by $2.6\times$ and $2.4\times$ in variance explained. The SAE and Dense representations exhibit no statistically detectable decodability advantage ($\Delta R^2 \le +0.024$, 95\% CIs crossing zero), demonstrating that SAEs provide coordinate re-alignment rather than superior decodability.}
+\caption{\textbf{Biophysical Parameter Decodability ($R^2$ on 13 Unseen Test Meshes).} Both Trained SAE ($R^2 = 0.378$) and Dense Layer 8 ($R^2 = 0.354$) outperform clinical surface calipers ($R^2 = 0.145$ for APD) by $2.6\times$ and $2.4\times$ in variance explained, while outperforming random-weight features ($R^2 = 0.042$) by $8.4\times$ to $9.0\times$. The SAE and Dense representations exhibit no statistically detectable decodability advantage ($\Delta R^2 \le +0.024$, 95\% CIs crossing zero), demonstrating that SAEs provide coordinate re-alignment rather than superior decodability.}
 \label{fig:decodability}
 \end{figure*}
 
 The benchmark in Table~\ref{tab:decodability} and Figure~\ref{fig:decodability} reveals two core insights:
 
-\paragraph{1. Latents Exceed Clinical Surface Morphology.}
-Both the SAE ($R^2 = 0.378$) and dense latents ($R^2 = 0.354$) outperform standard clinical ECG morphology calipers ($R^2 = 0.145$ for APD, derived primarily from surface QT interval). This reflects a \textbf{$2.4\times$ to $2.6\times$ increase in variance explained}, demonstrating that the pretrained foundation model captures microscopic repolarization kinetics beyond simple caliper heuristics. Conductor nuisance features achieve $R^2 \approx 0.000$, as expected since torso parameters have zero within-mesh variance by design.
+\paragraph{1. Pretraining Extracts Non-Trivial Biophysics (Vs. Random Weights \& Calipers).}
+Both the SAE ($R^2 = 0.378$) and dense latents ($R^2 = 0.354$) dramatically outperform an untrained random-weight foundation model (\textbf{RandInit} $R^2 = 0.042$), yielding an \textbf{$8.4\times$ to $9.0\times$ increase in variance explained} ($p < 10^{-12}$). This definitively confirms that biophysical decodability is an emergent property of large-scale pretraining rather than a mathematical artifact of arbitrary neural projections. Furthermore, pretrained latents exceed standard clinical ECG morphology calipers ($R^2 = 0.145$ for APD, derived primarily from surface QT interval) by $2.4\times$ to $2.6\times$. Conductor nuisance features achieve $R^2 \approx 0.000$, as expected since torso parameters have zero within-mesh variance by design.
 
 \paragraph{2. The SAE-Dense Parity Result.}
-The performance difference between the 6,144-dimensional SAE and 768-dimensional dense representation is marginal ($\Delta R^2$ between $+0.012$ and $+0.024$). In every parameter, the \textbf{95\% cluster-bootstrap confidence interval crosses zero} (e.g., $[-0.008, +0.056]$ for APD). The confidence intervals rule out decodability advantages exceeding $+0.056$ for APD ($+0.062$ for ischemia $z$). Furthermore, the per-dimension hit rate is higher in the dense model: \textbf{10.5\% of dense neurons (81 / 768)} satisfy FDR confirmation, compared to \textbf{4.13\% of SAE atoms (254 / 6,144)}. Thus, the SAE acts as a sparse feature transformation rather than an information-expanding operator.
+The performance difference between the 6,144-dimensional SAE and 768-dimensional dense representation is marginal ($\Delta R^2$ between $+0.012$ and $+0.024$). In every parameter, the \textbf{95\% cluster-bootstrap confidence interval crosses zero} (e.g., $[-0.008, +0.056]$ for APD). The confidence intervals rule out decodability advantages exceeding $+0.056$ for APD ($+0.062$ for ischemia $z$). Furthermore, the per-dimension hit rate is higher in the dense model: \textbf{10.5\% of dense neurons (81 / 768)} satisfy FDR confirmation, compared to \textbf{4.13\% of SAE atoms (254 / 6,144)}. Thus, the SAE acts as a sparse coordinate transformation rather than an information-expanding operator.
 
 \subsection{Dictionary Stability Across Random Initializations}
 Recent theoretical and empirical studies in language models have shown that sparse autoencoders trained on the same data learn non-identical feature directions~\cite{paulo2025sparse,heap2025saes}. To evaluate reproducibility in cardiac representations, we trained three identical JumpReLU SAE models differing only in random weight initialization seed ($S_0, S_1, S_2$).
 
-\begin{table}[b]
+\begin{table}[!tbh]
 \centering
 \footnotesize
-\setlength{\tabcolsep}{3.5pt}
+\setlength{\tabcolsep}{2.5pt}
 \caption{\textbf{Stability Analysis on 174 Headline Biophysical Atoms.} Vector alignment ($\ge 0.70$ cosine similarity) versus functional parameter association replication across independent training seeds.}
 \label{tab:stability}
 \begin{tabular}{lcc}
@@ -289,8 +292,17 @@ Evaluating an ECG foundation model against coupled biophysical PDE simulations a
 \paragraph{Limitations.}
 This study represents an \textit{in silico} case study focused on Layer~8 of the ECG-FM base model across 118 MedalCare-XL geometries. While coupled forward PDEs provide exact mathematical ground truth unobtainable in human patients, simulated signals do not capture physiological noise, respiratory baseline wander, or multiorgan feedback present in clinical practice. Furthermore, our evaluation explores a single layer, one expansion factor ($8\times$), and a single sparsity budget. Future work should expand across foundation architectures and investigate continuous subspace projections to overcome basis rotation sensitivity.
 
+\begingroup
+\footnotesize
+\let\oldthebibliography\thebibliography
+\renewcommand{\thebibliography}[1]{%
+  \oldthebibliography{#1}%
+  \setlength{\itemsep}{0.5pt}%
+  \setlength{\parskip}{0pt}%
+}
 \bibliographystyle{plain}
 \bibliography{references}
+\endgroup
 
 \clearpage
 \appendix
@@ -302,7 +314,7 @@ Table~\ref{tab:recall_full} reports the parameter recovery audit across all 29 n
 \begin{table}[h]
 \centering
 \footnotesize
-\setlength{\tabcolsep}{5pt}
+\setlength{\tabcolsep}{4.0pt}
 \caption{\textbf{Comprehensive Parameter Recall Audit.}}
 \label{tab:recall_full}
 \begin{tabular}{lccc}

@@ -117,32 +117,44 @@ def make_fig1_pipeline():
     print("Saved fig1_pipeline")
 
 # -------------------------------------------------------------------------
-# Figure 2: Compact Selectivity Distribution
+# Figure 2: Selectivity Distribution: SAE vs. Dense Layer 8
 # -------------------------------------------------------------------------
 def make_fig2_selectivity():
-    fig, ax = plt.subplots(figsize=(3.3, 2.4), dpi=300)
-    
-    categories = ['1', '2', '3', '4', '5']
-    counts = [204, 35, 10, 4, 1]
-    pcts = [80.3, 13.8, 3.9, 1.6, 0.4]
-    colors = ['#1976D2', '#42A5F5', '#90CAF9', '#BBDEFB', '#E3F2FD']
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(3.3, 2.0), dpi=300, sharey=True)
 
-    bars = ax.bar(categories, counts, color=colors, edgecolor='#0D47A1', linewidth=0.8, width=0.55)
-    ax.set_ylabel('Number of Atoms', fontsize=8.5)
-    ax.set_xlabel(r'Associated Biophysical Parameters per Atom ($|\rho| \geq 0.25$)', fontsize=8.0)
-    ax.set_ylim(0, 240)
+    categories = ['1', '2', r'$\geq 3$']
     
-    for bar, pct, cnt in zip(bars, pcts, counts):
+    # Left panel: JumpReLU SAE (N = 254 associated)
+    sae_pcts = [80.3, 13.8, 5.9]
+    sae_counts = [204, 35, 15]
+    sae_colors = ['#7B1FA2', '#AB47BC', '#CE93D8']
+    
+    bars1 = ax1.bar(categories, sae_pcts, color=sae_colors, edgecolor='#4A148C', linewidth=0.8, width=0.55)
+    ax1.set_ylabel('Share of Associated (%)', fontsize=7.5)
+    ax1.set_xlabel('Param Load', fontsize=7.5)
+    ax1.set_ylim(0, 100)
+    ax1.set_title('(a) JumpReLU SAE\nMean: 1.28 params', fontsize=8, weight='bold', pad=4)
+    ax1.grid(axis='y', linestyle='--', alpha=0.3)
+    
+    for bar, pct, cnt in zip(bars1, sae_pcts, sae_counts):
         yval = bar.get_height()
-        ax.text(bar.get_x() + bar.get_width()/2.0, yval + 4, f'{pct}%\n({cnt})',
-                ha='center', va='bottom', fontsize=7, weight='bold')
+        ax1.text(bar.get_x() + bar.get_width()/2.0, yval + 2, f'{pct:.1f}%\n({cnt})',
+                 ha='center', va='bottom', fontsize=6, weight='bold')
 
-    ax.grid(axis='y', linestyle='--', alpha=0.3)
-    ax.set_title(r'Atom Parameter Selectivity ($N = 254$ Associated)', fontsize=9, weight='bold', pad=8)
+    # Right panel: Dense Layer 8 (N = 81 associated)
+    dense_pcts = [35.7, 31.4, 32.9]
+    dense_counts = [29, 25, 27]
+    dense_colors = ['#E65100', '#FB8C00', '#FFCC80']
     
-    ax.text(0.95, 0.72, r'5,890 / 6,144 atoms (95.9%)' + '\n' + r'unassociated at $|\rho| \geq 0.25$',
-            transform=ax.transAxes, ha='right', va='top', fontsize=6.8,
-            bbox=dict(boxstyle='square,pad=0.25', facecolor='#FFFDE7', edgecolor='#FBC02D', alpha=0.9))
+    bars2 = ax2.bar(categories, dense_pcts, color=dense_colors, edgecolor='#BF360C', linewidth=0.8, width=0.55)
+    ax2.set_xlabel('Param Load', fontsize=7.5)
+    ax2.set_title('(b) Dense Layer 8\nMean: 2.26 params', fontsize=8, weight='bold', pad=4)
+    ax2.grid(axis='y', linestyle='--', alpha=0.3)
+    
+    for bar, pct, cnt in zip(bars2, dense_pcts, dense_counts):
+        yval = bar.get_height()
+        ax2.text(bar.get_x() + bar.get_width()/2.0, yval + 2, f'{pct:.1f}%\n({cnt})',
+                 ha='center', va='bottom', fontsize=6, weight='bold')
 
     plt.tight_layout()
     fig.savefig(os.path.join(OUT_DIR, 'fig2_selectivity.pdf'), bbox_inches='tight')
@@ -154,7 +166,7 @@ def make_fig2_selectivity():
 # Figure 3: Decodability Benchmark with Error Bars
 # -------------------------------------------------------------------------
 def make_fig3_decodability():
-    fig, ax = plt.subplots(figsize=(6.8, 2.7), dpi=300)
+    fig, ax = plt.subplots(figsize=(6.8, 2.1), dpi=300)
 
     params = [r'APD $\rho_d$', 'APD Min', r'Stim $\phi$', 'Stim $z$', 'Isch $z$']
     x = np.arange(len(params))
@@ -170,31 +182,31 @@ def make_fig3_decodability():
     sae_err = np.array([0.032, 0.029, 0.035, 0.031, 0.042])
     dense_err = np.array([0.030, 0.028, 0.034, 0.029, 0.039])
 
-    ax.bar(x - 1.5*w, sae, w, yerr=sae_err, capsize=2.5,
+    ax.bar(x - 1.5*w, sae, w, yerr=sae_err, capsize=2.2,
            label='Trained SAE (6,144)', color='#6A1B9A', edgecolor='#4A148C', linewidth=0.8,
            error_kw=dict(lw=0.8, capthick=0.8, ecolor='#311B92'))
-    ax.bar(x - 0.5*w, dense, w, yerr=dense_err, capsize=2.5,
+    ax.bar(x - 0.5*w, dense, w, yerr=dense_err, capsize=2.2,
            label='Dense Layer 8 (768)', color='#1565C0', edgecolor='#0D47A1', linewidth=0.8,
            error_kw=dict(lw=0.8, capthick=0.8, ecolor='#0D47A1'))
     ax.bar(x + 0.5*w, top32, w, label='Top-32 Dense (32)', color='#00897B', edgecolor='#004D40', linewidth=0.8)
     ax.bar(x + 1.5*w, morph, w, label='Clinical Calipers (QT/QRS)', color='#E64A19', edgecolor='#BF360C', linewidth=0.8)
 
-    ax.set_ylabel(r'Held-out $R^2$ (13 Test Meshes)', fontsize=9)
+    ax.set_ylabel(r'Held-out $R^2$ (13 Test Meshes)', fontsize=8.5)
     ax.set_xticks(x)
-    ax.set_xticklabels(params, fontsize=8.5, weight='bold')
+    ax.set_xticklabels(params, fontsize=8.0, weight='bold')
     ax.set_ylim(0, 0.55)
     ax.grid(axis='y', linestyle='--', alpha=0.35)
     
     # Place legend in upper left with generous clearance
-    ax.legend(loc='upper left', frameon=True, fontsize=7.2, ncol=2)
+    ax.legend(loc='upper left', frameon=True, fontsize=6.8, ncol=2)
     ax.set_title(r'Biophysical Decodability: SAE vs. Dense vs. Clinical Calipers (Mean $\pm$ 95% Cluster-Bootstrap CI)',
-                 fontsize=9.5, weight='bold', pad=8)
+                 fontsize=9, weight='bold', pad=4)
 
     # Highlight 2.6x jump over morphology, clear of legend
     ax.annotate(r'$2.6\times$ Variance over' + '\n' + r'Surface Calipers',
-                xy=(x[0] - 1.5*w, sae[0] + sae_err[0]), xytext=(x[0] + 0.35, 0.47),
-                arrowprops=dict(arrowstyle="->", lw=1.0, color='#C2185B'),
-                fontsize=7.2, weight='bold', color='#C2185B', ha='center',
+                xy=(x[0] - 1.5*w, sae[0] + sae_err[0]), xytext=(x[0] + 0.35, 0.46),
+                arrowprops=dict(arrowstyle="->", lw=0.9, color='#C2185B'),
+                fontsize=6.8, weight='bold', color='#C2185B', ha='center',
                 bbox=dict(boxstyle='round,pad=0.2', facecolor='#FCE4EC', edgecolor='#C2185B', alpha=0.9))
 
     plt.tight_layout()
