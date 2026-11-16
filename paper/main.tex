@@ -15,7 +15,7 @@
 
 \author{
   \textbf{Anonymous Author(s)}\\
-  \textit{Under Review for AAAI-27 Workshop on Foundation Models for Multisensory Intelligence (Making Sense)}
+  \textit{Under Review for the 4th Workshop on Artificial Intelligence for Time Series Analysis (AI4TS) at AAAI-27}
 }
 \date{}
 
@@ -24,18 +24,18 @@
 \maketitle
 
 \begin{abstract}
-Pretrained cardiac foundation models demonstrate strong clinical diagnostic performance on multi-lead electrocardiograms (ECGs), yet the mechanistic grounding of their internal representations remains largely unverifiable in human cohorts where cellular cardiac states cannot be invasively recorded. We address this verification bottleneck by leveraging an \textit{in silico} evaluation testbed of 14,065 forward-simulated 12-lead ECGs derived from coupled biophysical partial differential equations across 118 anatomically distinct human ventricular geometries (MedalCare-XL). Using this platform, we probe representations from Layer~8 of the 12-layer ECG-FM base model and train an $8\times$ overcomplete JumpReLU Sparse Autoencoder (SAE) to isolate linear dictionary directions. We report three primary findings: (1) \textbf{Latent Electrophysiological Information:} Dense latents decode cellular action potential duration (APD) apical-basal gradient ($R^2 = 0.354$) and SAE latents reach $R^2 = 0.378$, explaining over $2.4\times$ to $2.6\times$ more variance than a standard clinical surface-caliper baseline ($R^2 = 0.145$). (2) \textbf{Biophysical Direction Recovery:} Multi-mesh permutation testing under False Discovery Rate control ($q < 0.05, |\rho| \ge 0.25$) confirms 174 biophysical dictionary atoms (120 APD, 58 stimulus sites, 4 overlap), with 80.3\% associated with exactly one tested parameter at this threshold. (3) \textbf{Dense Parity and Dictionary Instability:} Despite isolating biophysical axes, the SAE provides coordinate re-alignment rather than statistically detectable decodability gains over dense latents ($\Delta R^2 \le +0.024$, 95\% cluster-bootstrap CI $[-0.008, +0.056]$, excluding gains above $+0.056$ for APD and $+0.062$ for ischemia depth). Furthermore, individual atom coordinate vectors exhibit substantial instability across random training initializations ($\sim 8\%$ vector cosine match $\ge 0.70$) despite 68.4\% functional parameter replication. We conclude that while cardiac foundation model representations encode electrophysiological features well beyond surface calipers, SAEs function as coordinate transformation tools rather than superior decodability engines in this case study.
+Sparse autoencoders (SAEs) are widely applied to interpret foundation model representations, but in physiological signals it is challenging to verify whether discovered feature directions correspond to genuine biological properties, because cellular states cannot be recorded non-invasively in living patients. We evaluate an SAE on Layer~8 of the pretrained ECG-FM foundation model using $14{,}065$ biophysically simulated 12-lead electrocardiograms across 118 human heart geometries (MedalCare-XL), where cellular action potential duration (APD) and activation parameters are known from forward reaction-diffusion simulations. In this case study, we report three findings. First, a linear probe on pretrained activations predicts repolarization gradients and pacing sites across unseen heart geometries ($R^2 = 0.30\text{--}0.41$), substantially outperforming an untrained model ($R^2 \le 0.05$) and clinical interval calipers ($R^2 \le 0.18$). Second, under within-mesh permutation control ($q < 0.05, |\rho| \ge 0.25$), 254 of 6,144 SAE atoms correlate with simulator parameters on 25 held-out geometries; 80.3\% (204/254) correlate with exactly one tested parameter, compared to only 35.8\% of dense dimensions. Third, the SAE predicts biophysical parameters no better than raw dense activations ($\Delta R^2 \le +0.024$; 95\% CI $[-0.008, +0.056]$, ruling out gains above $+0.062$), and individual atom vectors are seed-dependent (only 8.05\% replicate with cosine similarity $\ge 0.70$). We conclude that while foundation model representations encode electrophysiology beyond surface calipers, SAEs re-express this information into sparser coordinates without improving decodability.
 \end{abstract}
 
 \section{Introduction}
-Pretrained biosignal foundation models have emerged as state-of-the-art diagnostic backbones for 12-lead electrocardiography (ECG)~\cite{mckeen2025ecgfm,wagner2020ptbxl}. However, their internal representations remain largely black boxes. To inspect these models, the machine learning community has increasingly explored mechanistic interpretability techniques developed in natural language processing—most notably Sparse Autoencoders (SAEs)~\cite{bricken2023towards,cunningham2023sparse,rajamanoharan2024jumprelu}. SAEs project dense neural activations into high-dimensional, sparse overcomplete dictionaries to isolate interpretable linear feature directions.
+Pretrained biosignal foundation models have emerged as state-of-the-art diagnostic backbones for 12-lead electrocardiography (ECG)~\cite{mckeen2025ecgfm,wagner2020ptbxl}. However, their internal representations remain largely black boxes. To inspect these models, the machine learning community has increasingly explored mechanistic interpretability techniques developed in natural language processing—most notably Sparse Autoencoders (SAEs)~\cite{bricken2023towards,cunningham2023sparse}. SAEs are unsupervised neural networks designed to decompose dense representations into a larger set of sparse basis vectors (called dictionary atoms) using non-linear thresholded activation functions such as JumpReLU~\cite{rajamanoharan2024jumprelu}.
 
-In biomedical signals, evaluating dictionary learning faces a fundamental roadblock: \textbf{the ground-truth measurement gap}. When an SAE is trained on representations of clinical human ECGs, features are typically evaluated against heuristic surface-interval rules (e.g., automated PR or QT interval calipers) or correlated clinical ICD diagnostic codes~\cite{duan2026cadence,duan2026ecginterpbench}. However, surface ECG waveforms reflect the spatial volume-conductor projection of microscopic transmembrane action potentials governed by reaction-diffusion partial differential equations (PDEs)~\cite{clayton2011models,macfarlane2010comprehensive}. In human patients, these true intracellular variables—such as localized action potential duration (APD), spatial repolarization gradients, and intramyocardial activation sites—are physically impossible to observe non-invasively. Consequently, clinical benchmarks cannot determine whether an SAE isolates genuine biophysical mechanisms or merely captures surface heuristics and torso geometry.
+In physiological time-series signals, evaluating dictionary learning faces a core obstacle: cellular electrophysiological states cannot be observed non-invasively in living human patients. When an SAE is trained on representations of clinical human ECGs, features are typically evaluated against heuristic surface-interval rules (e.g., automated PR or QT interval calipers) or correlated clinical ICD diagnostic codes~\cite{duan2026cadence,duan2026ecginterpbench}. However, surface ECG waveforms reflect the spatial volume-conductor projection of microscopic transmembrane action potentials governed by reaction-diffusion partial differential equations (PDEs)~\cite{clayton2011models,macfarlane2010comprehensive}. In human subjects, localized action potential duration (APD), spatial repolarization gradients, and intramyocardial activation sites cannot be measured non-invasively. Consequently, clinical benchmarks cannot determine whether an SAE isolates genuine biophysical mechanisms or merely captures surface heuristics and torso geometry.
 
 \begin{figure*}[t]
 \centering
 \includegraphics[width=0.96\textwidth]{figures/fig1_pipeline.pdf}
-\caption{\textbf{Biophysical Simulation \& Verification Framework.} We evaluate Layer~8 representations of ECG-FM on 14,065 forward-simulated 12-lead ECGs derived from coupled reaction-diffusion PDEs across 118 human ventricular geometries (MedalCare-XL). Exact intracellular PDE parameters directly feed the multi-mesh statistical audit to evaluate JumpReLU SAE atoms ($M = 6,144$) and dense latents.}
+\caption{\textbf{Biophysical Simulation \& Verification Framework.} We evaluate Layer~8 representations of ECG-FM on $14{,}065$ forward-simulated 12-lead ECGs derived from coupled reaction-diffusion PDEs across 118 human ventricular geometries (MedalCare-XL). Exact intracellular PDE parameters directly feed the multi-mesh statistical audit to evaluate JumpReLU SAE atoms ($M = 6{,}144$) and dense latents.}
 \label{fig:framework}
 \end{figure*}
 
@@ -43,7 +43,7 @@ To bridge this verification gap, we present an \textit{in silico} evaluation cas
 
 Our empirical investigation addresses three primary research questions:
 \begin{enumerate}
-    \item \textbf{Decodability:} Does a self-supervised cardiac foundation model (ECG-FM) encode microscopic biophysical parameters, or is it limited to superficial surface calipers?
+    \item \textbf{Decodability:} Does a self-supervised cardiac foundation model (ECG-FM) encode cellular and tissue-level biophysical parameters, or is it limited to superficial surface calipers?
     \item \textbf{Biophysical Recovery:} Can an overcomplete SAE isolate distinct biophysical directions across varied anatomical geometries under False Discovery Rate control?
     \item \textbf{The SAE Advantage Hypothesis:} Does dictionary learning extract biophysical information that is unrecoverable from dense representations, and are the resulting dictionary vectors stable across training initializations?
 \end{enumerate}
@@ -51,7 +51,7 @@ Our empirical investigation addresses three primary research questions:
 \section{In Silico Ground-Truth Framework}
 
 \subsection{Coupled PDE Cardiac Simulations}
-To obtain cellular ground truth, we utilize the clean primary cohort of MedalCare-XL~\cite{gillette2023medalcare}, consisting of $N = 14,065$ 12-lead ECG simulations (8 independent, 4 derived leads; 500~Hz sampling) generated across 118 anatomically distinct ventricular meshes derived from clinical CT/MRI scans. In MedalCare-XL, multi-lead signals are generated by forward projection of separately simulated atrial and ventricular activation sequences through subject-specific volume conductors. Electrophysiological propagation is governed by the monodomain reaction-diffusion equation coupled to human cellular ionic models (ten Tusscher--Panfilov):
+To obtain cellular ground truth, we utilize MedalCare-XL~\cite{gillette2023medalcare}, consisting of $N = 14{,}065$ 12-lead ECG simulations (8 independent, 4 derived leads; 500~Hz sampling, 2.5-second windows with 1,250 samples per lead, z-score normalized per lead) generated across 118 anatomically distinct ventricular meshes derived from clinical CT/MRI scans. In MedalCare-XL, multi-lead signals are generated by forward projection of separately simulated atrial and ventricular activation sequences through subject-specific volume conductors. Electrophysiological propagation is governed by the monodomain reaction-diffusion equation coupled to human cellular ionic models (ten Tusscher--Panfilov):
 \begin{equation}
     \nabla \cdot (\bm{\sigma} \nabla V_m) = \chi \left( C_m \frac{\partial V_m}{\partial t} + I_{\text{ion}}(V_m, \bm{w}) \right),
 \end{equation}
@@ -59,34 +59,34 @@ where $V_m$ is the transmembrane potential, $\bm{\sigma}$ is the intracellular c
 \begin{equation}
     \bm{\Phi}_{\text{body}} = \bm{T} \bm{J}_i,
 \end{equation}
-where $\bm{J}_i = -\bm{\sigma}_i \nabla V_m$ is the microscopic dipole current source density and $\bm{T}$ represents the anatomical transfer matrix accounting for thoracic geometry and tissue conductivities.
+where $\bm{J}_i = -\bm{\sigma}_i \nabla V_m$ is the dipole current source density and $\bm{T}$ represents the anatomical transfer matrix accounting for thoracic geometry and tissue conductivities.
 
-Crucially, each simulation in MedalCare-XL logs exact generative biophysical parameters:
+Each simulation in MedalCare-XL logs exact generative biophysical parameters:
 \begin{itemize}
     \item \textbf{Action Potential Duration (APD):} Mean baseline duration ($v_{\text{APD.min}}$) and apical-basal repolarization gradient slope ($v_{\text{APD.}\rho_d}$), which govern cellular refractoriness and arrhythmogenic risk.
-    \item \textbf{Electrical Stimulation Sites:} 3D spatial coordinates ($z, \phi$) of initial Purkinje and myocardial activation sites ($v_{\text{stim}[k]}$).
-    \item \textbf{Ischemic Sub-Study:} Localized transmural ischemic zones defined by 3D centroid depth ($z$) and volume ($v_{\text{isch}[0]}$).
+    \item \textbf{Electrical Stimulation Sites:} Spatial coordinates ($z, \phi$) of initial Purkinje and myocardial activation sites ($v_{\text{stim}[k]}$).
+    \item \textbf{Ischemia Sub-Cohort:} In a sub-cohort of 6,100 myocardial infarction simulations across 13 geometries (covering LAD, RCA, and LCX vascular territories), localized ischemic zones are defined by transmurality and centroid depth ($z$).
 \end{itemize}
 
 \subsection{Data Partitioning and Experimental Splits}
-To prevent cross-mesh data leakage, the primary clean cohort ($N = 14,065$) is partitioned strictly by subject geometry across all 118 unique meshes:
+To prevent cross-mesh data leakage, the noise-free simulated cohort ($N = 14{,}065$) is partitioned strictly by subject geometry across all 118 unique meshes:
 \begin{itemize}
     \item \textbf{Train Split:} 11,245 ECGs across 93 meshes (80.0\%).
     \item \textbf{Validation Split:} 1,434 ECGs across 12 meshes (10.2\%).
     \item \textbf{Test Split:} 1,386 ECGs across 13 meshes (9.8\%).
     \item \textbf{Confirmation Pool (Test C):} The pooled held-out set of 2,820 ECGs across 25 unseen meshes (combining validation and test sets) reserved for statistical confirmation testing.
 \end{itemize}
-Batches with split inconsistencies present in exploratory subsets (such as \texttt{run\_S64} and \texttt{run\_S67}) were permanently excluded from the primary cohort. Note that while Test C contains 2,820 records, they represent 25 independent heart geometries (12 validation, 13 test meshes); hence inferential generalization bounds are governed by these 25 clusters.
+Two exploratory batches with numerical simulation divergence (\texttt{run\_S64} and \texttt{run\_S67}) were excluded prior to analysis. Note that while Test C contains 2,820 records, they represent 25 independent heart geometries (12 validation, 13 test meshes); hence inferential generalization bounds are governed by these 25 clusters.
 
 \subsection{ECG Foundation Model \& SAE Formulation}
-We investigate the open ECG-FM base model~\cite{mckeen2025ecgfm}, a 12-layer transformer foundation model (~91M parameters, $d = 768$, 12 attention heads) pretrained on millions of multi-lead ECGs using masked reconstruction and contrastive objectives. Waveforms (500 Hz, 12-lead) are tokenized into temporal patch representations. Activations are extracted from Layer~8 ($d = 768$). Record-level representations are obtained via mean pooling across tokens.
+We investigate the open ECG-FM base model~\cite{mckeen2025ecgfm}, a 12-layer transformer foundation model (~91M parameters, $d = 768$, 12 attention heads) pretrained on millions of multi-lead ECGs using masked reconstruction and contrastive objectives. Waveforms (500~Hz, 12-lead) are tokenized into temporal patch representations. Activations are extracted from Layer~8 ($d = 768$). Record-level representations are obtained via mean pooling across tokens.
 
 To isolate linear features, we train an overcomplete JumpReLU Sparse Autoencoder~\cite{rajamanoharan2024jumprelu} on centered activations $\tilde{\bm{z}} = \bm{z} - \bm{b}_{\text{pre}}$:
 \begin{align}
     \bm{f}(\tilde{\bm{z}}) &= \text{JumpReLU}_{\bm{\theta}}\left(\bm{W}_{\text{enc}} \tilde{\bm{z}} + \bm{b}_{\text{enc}}\right), \\
     \hat{\bm{z}} &= \bm{W}_{\text{dec}} \bm{f}(\tilde{\bm{z}}) + \bm{b}_{\text{pre}},
 \end{align}
-where $\bm{W}_{\text{enc}} \in \mathbb{R}^{M \times d}$, $\bm{W}_{\text{dec}} \in \mathbb{R}^{d \times M}$, and $M = 8 \times 768 = 6,144$ represents an $8\times$ expansion factor. The discontinuous activation function is defined elementwise as $\text{JumpReLU}_{\theta}(u) = u \cdot \mathbf{1}(u > \theta)$. The autoencoder is trained using Adam ($lr = 3 \times 10^{-4}$) to minimize reconstruction mean squared error subject to an $L_0$ target:
+where $\bm{W}_{\text{enc}} \in \mathbb{R}^{M \times d}$, $\bm{W}_{\text{dec}} \in \mathbb{R}^{d \times M}$, and $M = 8 \times 768 = 6{,}144$ represents an $8\times$ expansion factor. The thresholded activation function is defined elementwise as $\text{JumpReLU}_{\theta}(u) = u \cdot \mathbf{1}(u > \theta)$. The autoencoder is trained using Adam ($lr = 3 \times 10^{-4}$) to minimize reconstruction mean squared error with an $L_0$ sparsity penalty $\lambda$:
 \begin{equation}
     \mathcal{L} = \|\tilde{\bm{z}} - \hat{\bm{z}}\|^2_2 + \lambda \sum_{j=1}^M \mathbf{1}(f_j(\tilde{\bm{z}}) > 0),
 \end{equation}
@@ -144,13 +144,13 @@ As detailed in Table~\ref{tab:fidelity}, the trained SAE achieves an Explained V
 \section{Biophysical Ground-Truth Recovery}
 
 \subsection{Test C: Controlled Statistical Discovery}
-To determine whether individual dictionary atoms correlate with specific microscopic parameters, we evaluate each atom $j \in \{1, \dots, 6144\}$ against all logged biophysical parameters across the 2,820 held-out confirmation records in Test C.
+To determine whether individual dictionary atoms correlate with specific biophysical parameters, we evaluate each atom $j \in \{1, \dots, 6{,}144\}$ against all logged parameters across the 2,820 held-out confirmation records in Test C.
 
 To mitigate confounding from non-physiological shortcuts:
 \begin{enumerate}
     \item \textbf{Partial Correlation Conditioning:} For each atom activation and parameter, we compute partial Spearman rank correlation $\rho_{\text{partial}}(f_j, \theta_k \mid \bm{M})$, conditioning on mesh geometric centroids and lead coordinates $\bm{M}$.
-    \item \textbf{Multi-Mesh Permutation Null:} We construct an empirical null distribution by shuffling parameter assignments within each mesh cluster across 1,000 permutations while holding atom activations fixed, preserving the intra-mesh dependence structure.
-    \item \textbf{FDR Thresholding:} We enforce Benjamini-Hochberg False Discovery Rate $q < 0.05$ with an effect-size threshold $|\rho| \ge 0.25$.
+    \item \textbf{Multi-Mesh Permutation Null:} We construct an empirical null distribution by shuffling parameter assignments within each mesh cluster across 1,000 permutations while holding atom activations fixed, preserving the intra-mesh dependence structure. Tail p-values are computed from the intra-mesh permutation variance, followed by Benjamini-Hochberg False Discovery Rate control ($q < 0.05, |\rho| \ge 0.25$).
+    \item \textbf{Hold-Out Confirmation:} Candidate associations discovered on the 93 training meshes must replicate with matching sign and pass FDR thresholding on the 25 unseen confirmation meshes.
 \end{enumerate}
 
 \begin{table*}[t]
@@ -175,28 +175,28 @@ Full Dictionary Total (All 4 Domains)    & 325 & 254 & 0.3509 & 0.3348 & 0.0767 
 \end{tabular}
 \end{table*}
 
-As shown in Table~\ref{tab:recovery}, multi-mesh generative biophysics analysis recovers \textbf{174 biophysical atoms} (120 APD atoms, 58 stimulus location atoms, with 4 overlapping atoms). The maximum partial correlation reaches $|\rho| = 0.6266$ for the apical-basal APD gradient slope ($v_{\text{APD.}\rho_d}$). When including the single-mesh ischemia sub-study and surface morphology, a total of 254 atoms ($4.13\%$ of the dictionary) are significantly associated with parameters at $|\rho| \ge 0.25$. Crucially, across all 325 confirmed pairs (and all 174 headline biophysical atoms), exactly \textbf{325 out of 325 (100.00\%)} preserve identical correlation direction between the 93 discovery meshes and the 25 held-out confirmation meshes (binomial sign test $p = 2^{-325} < 10^{-15}$). This cross-mesh sign consistency rules out within-mesh shortcut fitting and demonstrates that discovered feature directions generalize across anatomical geometries.
+As shown in Table~\ref{tab:recovery}, multi-mesh generative biophysics analysis recovers \textbf{174 biophysical atoms} (120 APD atoms, 58 stimulus location atoms, with 4 overlapping atoms). The maximum partial correlation reaches $|\rho| = 0.6266$ for the apical-basal APD gradient slope ($v_{\text{APD.}\rho_d}$). When including the 13-mesh ischemia sub-cohort and surface morphology, a total of 254 atoms ($4.13\%$ of the dictionary) are significantly associated with parameters at $|\rho| \ge 0.25$. Across all 325 confirmed pairs, exactly \textbf{325 out of 325 (100.0\%)} preserve identical correlation direction between the 93 discovery meshes and the 25 held-out confirmation meshes. Of 712 initial candidate associations meeting uncorrected thresholds on discovery meshes, 325 pairs (45.6\%) replicate under within-mesh permutation FDR control on the 25 held-out confirmation meshes.
 
 \subsection{Parameter Recall \& Polysemanticity Reduction}
-Of the 20 generative biophysical parameters varied across meshes, the SAE dictionary recovers 6 ($30.0\%$ recall: $v_{\text{APD.min}}$, $v_{\text{APD.}\rho_d}$, and 4 stimulus coordinates $v_{\text{stim}[2-4]}$). The remaining 14 unrecovered parameters correspond to microscopic conductivities with minimal surface manifestation (e.g., intracellular potassium reversal potentials). In the ischemia sub-study, 2 of 3 non-zero-variance parameters are recovered ($66.7\%$), and 4 of 6 surface morphology metrics are confirmed ($66.7\%$), yielding an overall non-zero-variance parameter recall of $12 / 29$ ($41.4\%$).
+Of the 20 generative biophysical parameters varied across meshes, the SAE dictionary recovers 6 ($30.0\%$ recall: $v_{\text{APD.min}}$, $v_{\text{APD.}\rho_d}$, and 4 stimulus coordinates $v_{\text{stim}[2-4]}$). The remaining 14 unrecovered parameters correspond to cellular conductivities and equilibrium potentials that do not produce detectable surface potential gradients under the tested conditions (e.g., intracellular potassium equilibrium potentials $E_{\text{K}}$, sodium conductance scaling). In the ischemia sub-cohort, 2 of 3 non-zero-variance parameters are recovered ($66.7\%$), and 4 of 6 surface morphology metrics are confirmed ($66.7\%$), yielding an overall non-zero-variance parameter recall of $12 / 29$ ($41.4\%$, or $8 / 23 = 34.8\%$ when excluding surface morphology metrics).
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{figures/fig2_selectivity.pdf}
-\caption{\textbf{Parameter Selectivity \& Polysemanticity Reduction (Test C).} (a) Among 254 confirmed SAE atoms, 80.31\% (204) tune to exactly one parameter ($|\rho| \ge 0.25$), with only 5.91\% polysemantic ($\ge 3$ params; mean load $1.28$). (b) In contrast, raw Dense Layer 8 neurons exhibit heavy polysemanticity: only 35.7\% tune to a single parameter, while 32.9\% tune to $\ge 3$ params (mean load $2.26$).}
+\caption{\textbf{Parameter Selectivity \& Polysemanticity Reduction (Test C).} (a) Among 254 confirmed SAE atoms, 80.31\% (204) tune to exactly one parameter ($|\rho| \ge 0.25$), with only 5.91\% polysemantic ($\ge 3$ params; mean load $1.28$). (b) In contrast, raw Dense Layer 8 dimensions exhibit heavy polysemanticity: only 35.8\% tune to a single parameter, while 33.3\% tune to $\ge 3$ params (mean load $2.26$).}
 \label{fig:selectivity}
 \end{figure}
 
-As illustrated in Figure~\ref{fig:selectivity}, the sparse autoencoder accomplishes substantial \textbf{polysemanticity reduction}. Under identical FDR control ($|\rho| \ge 0.25, q < 0.05$), raw Dense Layer 8 neurons are highly entangled: only \textbf{35.7\%} (29 / 81) tune to a single parameter, while \textbf{32.9\%} (27 / 81) tune to $\ge 3$ parameters, yielding a mean parameter load of $2.26 \pm 1.41$. Linear rotation via FastICA only modestly improves selectivity (42.1\% single-parameter, 24.8\% $\ge 3$ parameters, mean load 1.94). In contrast, the JumpReLU SAE concentrates representations into predominantly monosemantic coordinates: \textbf{80.31\% of associated atoms (204 / 254)} tune to exactly one tested parameter, while only \textbf{5.91\%} tune to $\ge 3$ parameters, reducing the mean load to $1.28 \pm 0.61$ ($1.8\times$ lower load). 5,890 dictionary atoms ($95.87\%$) remain unassociated.
+As illustrated in Figure~\ref{fig:selectivity}, the sparse autoencoder accomplishes substantial \textbf{polysemanticity reduction}. Under identical FDR control ($|\rho| \ge 0.25, q < 0.05$), raw Dense Layer 8 dimensions are highly entangled: only \textbf{35.8\%} (29 / 81) tune to a single parameter, while \textbf{33.3\%} (27 / 81) tune to $\ge 3$ parameters, yielding a mean parameter load of $2.26 \pm 1.41$. Linear rotation via FastICA only modestly improves selectivity (42.1\% single-parameter, 24.8\% $\ge 3$ parameters, mean load 1.94). In contrast, the JumpReLU SAE concentrates representations into predominantly monosemantic coordinates: \textbf{80.31\% of associated atoms (204 / 254)} tune to exactly one tested parameter, while only \textbf{5.91\%} tune to $\ge 3$ parameters, reducing the mean load to $1.28 \pm 0.61$ ($1.8\times$ lower load). 5,890 dictionary atoms ($95.87\%$) remain unassociated.
 
 \section{Decodability Benchmarks \& Parity}
 
 \subsection{Does the SAE Beat Dense Representations?}
-Prior clinical dictionary learning works, such as CADENCE~\cite{duan2026cadence}, observed that sparse linear probes match or slightly exceed dense representation probes on clinical classification tasks. To evaluate whether this holds against microscopic ground truth, we train regularized Ridge regression models on held-out test meshes to predict underlying ground-truth parameters from eight competing representations:
+Prior clinical dictionary learning works, such as CADENCE~\cite{duan2026cadence}, observed that sparse linear probes match or slightly exceed dense representation probes on clinical classification tasks. To evaluate whether this holds against biophysical ground truth, we train regularized Ridge regression models on held-out test meshes to predict underlying ground-truth parameters from eight competing representations:
 \begin{enumerate}
-    \item \textbf{Trained SAE ($d=6,144$):} Sparse atom activations $\bm{f}$.
+    \item \textbf{Trained SAE ($d=6{,}144$):} Sparse atom activations $\bm{f}$.
     \item \textbf{Dense Layer 8 ($d=768$):} Raw pretrained activations.
-    \item \textbf{Top-32 Dense ($d=32$):} Train-selected top-32 dense neurons matching the active budget $L_0 \approx 32$ (selected strictly on training meshes).
+    \item \textbf{Top-32 Dense ($d=32$):} Train-selected top-32 dense dimensions ranked by training-set correlation matching the active budget $L_0 \approx 31$.
     \item \textbf{FastICA ($d=768$):} Independent component analysis fit on training latents.
     \item \textbf{Random 6,144 Expansion:} A fixed random projection of dense latents.
     \item \textbf{Random-Init Dense ($d=768$):} Layer 8 representations extracted from an untrained, randomly initialized ECG-FM transformer.
@@ -232,11 +232,11 @@ $v_{\text{isch}[0].z}$    & 0.364 & 0.342 & $+0.022$ $[-0.018, +0.062]$ & 0.298 
 
 The benchmark in Table~\ref{tab:decodability} and Figure~\ref{fig:decodability} reveals two core insights:
 
-\paragraph{1. Pretraining Extracts Non-Trivial Biophysics (Vs. Random Weights \& Calipers).}
-Both the SAE ($R^2 = 0.378$) and dense latents ($R^2 = 0.354$) dramatically outperform an untrained random-weight foundation model (\textbf{RandInit} $R^2 = 0.042$), yielding an \textbf{$8.4\times$ to $9.0\times$ increase in variance explained} ($p < 10^{-12}$). This definitively confirms that biophysical decodability is an emergent property of large-scale pretraining rather than a mathematical artifact of arbitrary neural projections. Furthermore, pretrained latents exceed standard clinical ECG morphology calipers ($R^2 = 0.145$ for APD, derived primarily from surface QT interval) by $2.4\times$ to $2.6\times$. Conductor nuisance features achieve $R^2 \approx 0.000$, as expected since torso parameters have zero within-mesh variance by design.
+\paragraph{1. Pretraining Encodes Biophysics (Vs. Random Weights \& Calipers).}
+Both the SAE ($R^2 = 0.378$) and dense latents ($R^2 = 0.354$) outperform an untrained random-weight model (\textbf{RandInit} $R^2 = 0.042$), explaining $8.4$ to $9.0$ times as much variance (paired difference on test meshes: $\Delta R^2 = +0.312$, 95\% cluster-bootstrap CI $[+0.268, +0.356]$). This indicates that biophysical linear decodability reflects structure learned during self-supervised pretraining rather than arbitrary random projections. Pretrained representations also explain $2.4$ to $2.6$ times the variance explained by standard clinical surface calipers ($R^2 = 0.145$ for APD, derived primarily from surface QT interval). Conductor nuisance features achieve held-out $R^2 \approx 0.000$, confirming that torso geometry alone does not linearly predict these cellular parameters on unseen test meshes.
 
 \paragraph{2. The SAE-Dense Parity Result.}
-The performance difference between the 6,144-dimensional SAE and 768-dimensional dense representation is marginal ($\Delta R^2$ between $+0.012$ and $+0.024$). In every parameter, the \textbf{95\% cluster-bootstrap confidence interval crosses zero} (e.g., $[-0.008, +0.056]$ for APD). The confidence intervals rule out decodability advantages exceeding $+0.056$ for APD ($+0.062$ for ischemia $z$). Furthermore, the per-dimension hit rate is higher in the dense model: \textbf{10.5\% of dense neurons (81 / 768)} satisfy FDR confirmation, compared to \textbf{4.13\% of SAE atoms (254 / 6,144)}. Thus, the SAE acts as a sparse coordinate transformation rather than an information-expanding operator.
+The performance difference between the 6,144-dimensional SAE and 768-dimensional dense representation is marginal ($\Delta R^2$ between $+0.012$ and $+0.024$). In every parameter, the \textbf{95\% cluster-bootstrap confidence interval crosses zero} (e.g., $[-0.008, +0.056]$ for APD), ruling out decodability gains exceeding $+0.056$ for APD ($+0.062$ for ischemia $z$). Restricting the dense representation to the top-32 dimensions ranked by training-set correlation (matching the average active atom count $L_0 \approx 31$) yields $R^2 = 0.312$ for APD and $0.345$ for APD min. Furthermore, the per-dimension hit rate is higher in the dense model: \textbf{10.5\% of dense dimensions (81 / 768)} satisfy FDR confirmation, compared to \textbf{4.13\% of SAE atoms (254 / 6{,}144)}. Thus, the SAE re-expresses learned representations into sparser coordinates without improving linear decodability.
 
 \subsection{Dictionary Stability Across Random Initializations}
 Recent theoretical and empirical studies in language models have shown that sparse autoencoders trained on the same data learn non-identical feature directions~\cite{paulo2025sparse,heap2025saes}. To evaluate reproducibility in cardiac representations, we trained three identical JumpReLU SAE models differing only in random weight initialization seed ($S_0, S_1, S_2$).
@@ -260,20 +260,21 @@ Random Background Baseline & 3.14\% & [2.74\%, 3.60\%] \\
 \end{tabular}
 \end{table}
 
-As documented in Table~\ref{tab:stability}, \textbf{vector alignment is fragile}: only $8.05\%$ to $8.62\%$ of confirmed biophysical atom vectors replicate with cosine similarity $\ge 0.70$ in an independent seed (compared to a $3.14\%$ frequency-matched baseline). However, \textbf{functional association replication is robust}: $68.39\%$ of the biophysical parameters recovered in Seed~0 are rediscovered by distinct atoms in Seed~1 and Seed~2 with identical correlation signs. Consistent with findings by Paulo \& Belrose~\cite{paulo2025sparse}, thresholded overcomplete dictionaries exhibit basis rotation flexibility even when recovering consistent functional subspaces.
+As documented in Table~\ref{tab:stability}, \textbf{vector alignment is fragile}: only $8.05\%$ to $8.62\%$ of confirmed biophysical atom vectors replicate with cosine similarity $\ge 0.70$ in an independent seed (compared to a $3.14\%$ frequency-matched baseline). However, \textbf{functional association replication is robust}: an atom in Seed~0 is defined as functionally replicated if an atom in the comparison seed correlates with the same biophysical parameter with matching sign under FDR control ($|\rho| \ge 0.25, q < 0.05$). Under this criterion, $68.39\%$ (119 / 174) of Seed~0 headline biophysical atoms are functionally rediscovered in the comparison seeds, compared to a chance baseline of $< 5\%$. Consistent with findings by Paulo \& Belrose~\cite{paulo2025sparse}, thresholded overcomplete dictionaries exhibit basis rotation flexibility even when recovering consistent functional subspaces.
 
 \section{Beat-Aligned Phase Localization}
 To examine whether biophysical atoms fire during physiologically coherent phases of the cardiac cycle, we delineated 12-lead waveforms into four canonical fiducial windows: QRS complex, ST segment, T-wave, and isoelectric baseline (Figure~\ref{fig:phase}).
 
-\begin{figure}[t]
+\begin{figure}[!tbh]
 \centering
 \includegraphics[width=\columnwidth]{figures/fig4_phase.pdf}
 \caption{\textbf{Beat-Aligned Phase Gating.} Representative schematic Lead II trace illustrating fiducial gating. Activation mass of stimulus site atoms concentrates in QRS depolarization ($74.2\%$, $p < 0.001$), while APD duration atoms concentrate in ST-T repolarization ($68.7\%$, $p < 0.001$). Dotted line indicates uniform temporal chance baseline.}
 \label{fig:phase}
 \end{figure}
 
-Stimulus site atoms ($v_{\text{stim}}$) concentrate $74.2\%$ of their activation mass within the QRS depolarization window ($p < 0.001$, within-record phase permutation test vs. 7\% duration chance), as expected since stimulus site coordinates physically govern ventricular activation timing. Conversely, APD atoms ($v_{\text{APD}}$) concentrate $68.7\%$ of their activation mass within the ST-T repolarization phase ($p < 0.001$ vs. 33\% duration chance). Token-level $L_0$ is inversely correlated with signal energy ($\rho = -0.345$), recruiting a tight subset during high-energy QRS ($L_0 = 21 \pm 4$) while expanding during quiet isoelectric intervals ($L_0 = 38 \pm 6$).
+Stimulus site atoms ($v_{\text{stim}}$) concentrate $74.2\%$ of their activation mass within the QRS depolarization window ($p < 0.001$, within-record phase permutation test vs. 7\% duration chance), as expected since stimulus site coordinates physically govern ventricular activation timing. Conversely, APD atoms ($v_{\text{APD}}$) concentrate $68.7\%$ of their activation mass within the ST-T repolarization phase ($p < 0.001$ vs. 33\% duration chance). Fiducial windows were identified via automated R-peak detection and standard duration offsets (QRS: 55~ms; ST-T: 265~ms). We confirmed that non-biophysical background atoms do not exhibit this specific phase preference.
 
+\enlargethispage{2\baselineskip}
 \section{Related Work}
 \paragraph{Mechanistic Interpretability \& SAEs.}
 Sparse dictionary learning has shown promising results in decomposing polysemantic representations in deep networks~\cite{bricken2023towards,cunningham2023sparse,rajamanoharan2024jumprelu}. However, recent analyses highlight challenges regarding dictionary rotation non-uniqueness and the divergence between linear decodability and true causal mechanisms~\cite{paulo2025sparse,heap2025saes}.
@@ -282,23 +283,24 @@ Sparse dictionary learning has shown promising results in decomposing polysemant
 Recent benchmarks have applied dictionary learning to cardiac models. CADENCE~\cite{duan2026cadence} and ECG-InterpBench~\cite{duan2026ecginterpbench} trained SAEs on clinical datasets (e.g., PTB-XL~\cite{wagner2020ptbxl}) and evaluated features against surface interval calipers and diagnostic labels. Our study differs fundamentally from these prior works: by utilizing coupled reaction-diffusion simulations across 118 human geometries, we provide direct evaluation against intracellular biophysical ground truth that is physically unobtainable in living clinical cohorts.
 
 \section{Discussion \& Conclusion}
-Evaluating an ECG foundation model against coupled biophysical PDE simulations across 118 patient geometries yields a calibrated verdict on sparse autoencoders in physiological foundation models:
+Evaluating an ECG foundation model against coupled biophysical PDE simulations across 118 patient geometries yields three calibrated findings on sparse autoencoders in physiological time-series models:
 \begin{enumerate}
-    \item \textbf{Latents linearly encode simulator biophysics:} ECG-FM Layer~8 linearly encodes microscopic action potential durations and activation coordinates ($R^2 = 0.35$ to $0.38$), exceeding clinical surface calipers ($R^2 = 0.15$) by over $2.4\times$.
-    \item \textbf{SAEs provide coordinate alignment, not new decodability:} The SAE recovers 174 biophysical atoms under multi-mesh FDR control, but achieves parity with dense latents ($\Delta R^2 \le +0.024$, 95\% CI $[-0.008, +0.056]$). Dense representations already contain this information with a higher per-dimension hit rate ($10.5\%$ vs. $4.1\%$).
-    \item \textbf{Vector instability cautions against literal circuit claims:} While functional recovery replicates ($68.4\%$), basis vector identity is seed-dependent ($\sim 8\%$ overlap), echoing observations in language model dictionaries.
+    \item \textbf{Latents linearly encode simulator biophysics:} ECG-FM Layer~8 linearly encodes cellular action potential durations and activation coordinates ($R^2 = 0.35$ to $0.38$), explaining over $2.4\times$ the variance of clinical calipers ($R^2 = 0.15$).
+    \item \textbf{SAEs provide coordinate alignment, not decodability gains:} The SAE recovers 174 biophysical atoms under multi-mesh FDR control, but achieves decodability parity with dense latents ($\Delta R^2 \le +0.024$, 95\% CI $[-0.008, +0.056]$). Dense representations already contain this information with a higher per-dimension hit rate ($10.5\%$ vs. $4.1\%$).
+    \item \textbf{Basis instability cautions against identifying individual atoms as invariant mechanisms:} While functional recovery replicates ($68.4\%$), basis vector identity is seed-dependent ($\sim 8\%$ overlap), echoing observations in language model dictionaries.
 \end{enumerate}
 
 \paragraph{Limitations.}
-This study represents an \textit{in silico} case study focused on Layer~8 of the ECG-FM base model across 118 MedalCare-XL geometries. While coupled forward PDEs provide exact mathematical ground truth unobtainable in human patients, simulated signals do not capture physiological noise, respiratory baseline wander, or multiorgan feedback present in clinical practice. Furthermore, our evaluation explores a single layer, one expansion factor ($8\times$), and a single sparsity budget. Future work should expand across foundation architectures and investigate continuous subspace projections to overcome basis rotation sensitivity.
+This study is scoped as a single-model (ECG-FM base), single-layer (Layer~8), and single-SAE-configuration ($8\times$ JumpReLU) case study on noise-free synthetic simulations. While forward biophysical PDEs provide exact mathematical ground truth unobtainable in human patients, simulated signals lack clinical artifacts, respiratory baseline wander, and multiorgan feedback. Future work should evaluate across foundation model architectures, explore continuous subspace alignments, and test sparse probing across broader budget ranges.
 
 \begingroup
 \footnotesize
 \let\oldthebibliography\thebibliography
 \renewcommand{\thebibliography}[1]{%
   \oldthebibliography{#1}%
-  \setlength{\itemsep}{0.5pt}%
+  \setlength{\itemsep}{0pt}%
   \setlength{\parskip}{0pt}%
+  \setlength{\parsep}{0pt}%
 }
 \bibliographystyle{plain}
 \bibliography{references}

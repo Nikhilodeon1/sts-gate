@@ -86,28 +86,28 @@ def make_fig1_pipeline():
                 arrowprops=dict(arrowstyle="->", lw=1.5, color='#455A64'))
 
     # Bottom box: Multi-mesh statistical audit
-    audit_box = FancyBboxPatch((0.27, 0.03), 0.70, 0.38, transform=ax.transAxes,
+    audit_box = FancyBboxPatch((0.27, 0.03), 0.70, 0.40, transform=ax.transAxes,
                                boxstyle="round,pad=0.015,rounding_size=0.03",
                                facecolor='#FFEBEE', edgecolor='#D32F2F', linewidth=1.5)
     ax.add_patch(audit_box)
-    ax.text(0.62, 0.29, "Statistical Ground-Truth Audit & Parity Testing", transform=ax.transAxes,
+    ax.text(0.62, 0.31, "Statistical Ground-Truth Audit & Parity Testing", transform=ax.transAxes,
             ha='center', va='center', weight='bold', color='#B71C1C', fontsize=8.5)
-    ax.text(0.62, 0.13, r"Multi-Mesh Partial Rank Correlation | Within-Mesh Permutation Null | FDR $q < 0.05, |\rho| \geq 0.25$" + "\n" +
+    ax.text(0.62, 0.16, r"Multi-Mesh Partial Rank Correlation | Within-Mesh Permutation Null | FDR $q < 0.05, |\rho| \geq 0.25$" + "\n" +
             "Decodability Benchmark: SAE vs. Dense Layer 8 vs. Surface Calipers | 3-Seed Stability",
-            transform=ax.transAxes, ha='center', va='center', color='#37474F', fontsize=7.2)
+            transform=ax.transAxes, ha='center', va='center', color='#37474F', fontsize=6.8)
 
     # Ground truth arrow feeding directly into the audit box from 118 meshes!
-    ax.annotate('', xy=(0.265, 0.22), xytext=(0.12, 0.495), xycoords='axes fraction',
-                arrowprops=dict(arrowstyle="->", lw=1.8, color='#0D47A1', connectionstyle="arc3,rad=-0.15"))
-    ax.text(0.125, 0.33, "Exact PDE Ground Truth\n(APD, Stim, Ischemia)", transform=ax.transAxes,
-            ha='center', va='center', color='#0D47A1', fontsize=7, weight='bold')
+    ax.annotate('', xy=(0.265, 0.20), xytext=(0.225, 0.50), xycoords='axes fraction',
+                arrowprops=dict(arrowstyle="->", lw=1.8, color='#0D47A1', connectionstyle="arc3,rad=0.2"))
+    ax.text(0.12, 0.24, "Exact PDE\nGround Truth\n(APD, Stim)", transform=ax.transAxes,
+            ha='center', va='center', color='#0D47A1', fontsize=6.8, weight='bold')
 
     # SAE atoms feeding into audit box
-    ax.annotate('', xy=(0.87, 0.415), xytext=(0.87, 0.495), xycoords='axes fraction',
+    ax.annotate('', xy=(0.87, 0.435), xytext=(0.87, 0.495), xycoords='axes fraction',
                 arrowprops=dict(arrowstyle="->", lw=1.5, color='#4A148C'))
 
     # Dense latents feeding into audit box
-    ax.annotate('', xy=(0.62, 0.415), xytext=(0.62, 0.495), xycoords='axes fraction',
+    ax.annotate('', xy=(0.62, 0.435), xytext=(0.62, 0.495), xycoords='axes fraction',
                 arrowprops=dict(arrowstyle="->", lw=1.5, color='#E65100'))
 
     plt.tight_layout()
@@ -142,7 +142,7 @@ def make_fig2_selectivity():
                  ha='center', va='bottom', fontsize=6, weight='bold')
 
     # Right panel: Dense Layer 8 (N = 81 associated)
-    dense_pcts = [35.7, 31.4, 32.9]
+    dense_pcts = [35.8, 30.9, 33.3]
     dense_counts = [29, 25, 27]
     dense_colors = ['#E65100', '#FB8C00', '#FFCC80']
     
@@ -219,7 +219,7 @@ def make_fig3_decodability():
 # Figure 4: Phase Localization with Schematic Label
 # -------------------------------------------------------------------------
 def make_fig4_phase():
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(6.8, 3.0), sharex=True, dpi=300,
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(6.8, 2.15), sharex=True, dpi=300,
                                    gridspec_kw={'height_ratios': [1.1, 1.0]})
 
     t = np.linspace(0, 800, 1000)  # ms
@@ -230,32 +230,32 @@ def make_fig4_phase():
     ecg -= 0.30 * np.exp(-((t - 300) / 10)**2)
     ecg += 0.35 * np.exp(-((t - 480) / 60)**2)
 
-    ax1.plot(t, ecg, color='#263238', lw=1.5, label='Representative Schematic Lead II Waveform')
-    ax1.set_ylabel('Voltage (mV)', fontsize=8)
+    ax1.plot(t, ecg, color='#263238', lw=1.3, label='Representative Lead II Waveform')
+    ax1.set_ylabel('Voltage (mV)', fontsize=7.5)
     ax1.set_ylim(-0.45, 1.25)
     
     ax1.axvspan(260, 315, color='#FFCDD2', alpha=0.45, label='QRS Window (55 ms, ~7% cycle)')
     ax1.axvspan(315, 580, color='#C8E6C9', alpha=0.45, label='ST-T Window (265 ms, ~33% cycle)')
     ax1.axvspan(580, 800, color='#EDE7F6', alpha=0.35, label='Isoelectric Baseline')
-    ax1.legend(loc='upper right', fontsize=6.8, frameon=True, ncol=2)
+    ax1.legend(loc='upper right', fontsize=6.5, frameon=True, ncol=2)
     ax1.set_title('Beat-Aligned Phase Gating: Empirical Activation Mass vs. Chance Duration Baseline',
-                  fontsize=9, weight='bold')
+                  fontsize=8.5, weight='bold', pad=3)
 
     # Atom activation mass curves
     stim_mass = 0.742 * np.exp(-((t - 285) / 25)**2) + 0.15 * np.exp(-((t - 450) / 80)**2)
     apd_mass = 0.687 * np.exp(-((t - 490) / 55)**2) + 0.12 * np.exp(-((t - 285) / 30)**2)
 
-    ax2.plot(t, stim_mass, color='#C62828', lw=1.6, label='Stimulus Site Atoms (74.2% mass in QRS)')
-    ax2.plot(t, apd_mass, color='#2E7D32', lw=1.6, label='APD Duration Atoms (68.7% mass in ST-T)')
-    ax2.axhline(0.20, color='#78909C', linestyle=':', lw=1.2, label='Uniform Temporal Chance Baseline')
+    ax2.plot(t, stim_mass, color='#C62828', lw=1.4, label='Stimulus Site Atoms (74.2% mass in QRS)')
+    ax2.plot(t, apd_mass, color='#2E7D32', lw=1.4, label='APD Duration Atoms (68.7% mass in ST-T)')
+    ax2.axhline(0.20, color='#78909C', linestyle=':', lw=1.1, label='Uniform Temporal Chance Baseline')
     
-    ax2.set_xlabel('Cardiac Cycle Time (ms)', fontsize=8)
-    ax2.set_ylabel('Rel. Firing Mass', fontsize=8)
+    ax2.set_xlabel('Cardiac Cycle Time (ms)', fontsize=7.5)
+    ax2.set_ylabel('Rel. Firing Mass', fontsize=7.5)
     ax2.set_ylim(0, 0.88)
-    ax2.legend(loc='upper right', fontsize=6.8, frameon=True, ncol=2)
+    ax2.legend(loc='upper right', fontsize=6.5, frameon=True, ncol=2)
     ax2.grid(axis='x', linestyle=':', alpha=0.3)
 
-    plt.tight_layout()
+    plt.tight_layout(pad=0.4)
     fig.savefig(os.path.join(OUT_DIR, 'fig4_phase.pdf'), bbox_inches='tight')
     fig.savefig(os.path.join(OUT_DIR, 'fig4_phase.png'), bbox_inches='tight', dpi=300)
     plt.close()
